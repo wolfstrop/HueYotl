@@ -261,6 +261,8 @@ class Pipeline:
             ev.append("▼dark")
         if dd._dry_stop:
             ev.append("✋SECO")
+        if dd.anomalies.last and dd._frame - dd.anomalies.last_frame < 750:
+            ev.append("⚠️" + dd.anomalies.last)
         if dd.dyn.trend > dd.tuning.surge_threshold:
             ev.append("↑MÉTELE")
         elif dd.dyn.trend < -dd.tuning.surge_threshold:
