@@ -1,8 +1,6 @@
 import math
 import random
-from collections import deque
 
-from audio_analyzer.tempo import TempoTracker
 from rgb_mapper.deck import ColorDeck
 from rgb_mapper.grammar import SHADOW_HUE, ColorGrammar
 from rgb_mapper.mapper import ColorDecision
@@ -169,8 +167,9 @@ class MusicDirector:
     def _reset_state(self) -> None:
         self.energy_channel.reset()
         self._frame = 0
-        self._last_onset_frame = 0
-        self._onset_frames: deque[int] = deque(maxlen=64)
+        self.beat_channel.reset()
+        self.harmony_channel.reset()
+        self._last_onset_frame = 0   # espejo del BeatChannel
         self._section_cooldown = 0
         self._flash_cooldown = 0
         self._energy_ema = 0.0        # espejo del EnergyChannel (breakdown/improviser)
@@ -291,9 +290,7 @@ class MusicDirector:
     # ------------------------------------------------------------ carácter
 
     def _onset_density(self) -> float:
-        window = self._frame_rate * 5
-        recent = sum(1 for f in self._onset_frames if self._frame - f <= window)
-        return recent / 5.0
+        return self.beat_channel.onset_density(self._frame)
 
     def _brusque(self) -> bool:
         return self._onset_density() >= 1.5 or self.energy_channel.level_of(
@@ -482,10 +479,8 @@ class MusicDirector:
             self._flash_cooldown -= 1
 
         strong_onset = onset and onset_intensity >= self._step_intensity
-        self.tempo.update(self._frame, strong_onset)
-        if strong_onset:
-            self._last_onset_frame = self._frame
-            self._onset_frames.append(self._frame)
+        self.beat_channel.update(self._frame, strong_onset)
+        self._last_onset_frame = self.beat_channel.last_onset_frame
 
         level = rep_e.level
         # Intensidad = energía absoluta (loudness, ya 0-1) + un toque de posición
@@ -504,10 +499,10 @@ class MusicDirector:
         # MOOD → la CLAVE de color que siembra el deck. Temperatura = timbre
         # lento (~6s); profundidad y amplitud = intensidad del momento (movida
         # = clave ancha y brillante; tranquila = cerrada y profunda).
-        self._temperature += (self.centroid - self._temperature) * (1.0 / (self._frame_rate * 6.0))
-        # temperatura = timbre (centroide) + EMPUJÓN emocional del modo (mayor→
-        # cálido/alegre, menor→frío/triste). El chroma es crudo → peso ajustable.
-        temp_eff = _clamp01(self._temperature + (self.valence - 0.5) * self.tuning.valence_strength)
+        temp_eff = self.harmony_channel.update(
+            self.centroid, self.valence, self.tuning.valence_strength
+        )
+        self._temperature = self.harmony_channel.temperature  # espejo
         # profundidad: intensidad + contorno de la melodía → grave jala a tonos
         # PROFUNDOS (azul/morado/rojo oscuro), agudo a brillantes (espejo del plateau)
         depth = 0.5 * self.dyn.intensity + 0.5 * self._melody_slow
@@ -1125,7 +1120,6 @@ class MusicDirector:
     # ----------------------------------------------------------- internos
 
     def reset(self) -> None:
-        self.tempo.reset()
         self.improviser.reset()
         self.deck.reseed()
         self._reset_state()
