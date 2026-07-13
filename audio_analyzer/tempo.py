@@ -30,16 +30,35 @@ class TempoTracker:
 
         if self._last_onset is not None:
             ioi = float(frame - self._last_onset)
-            # Plegar el intervalo a rango razonable: corcheas/compases
-            # cuentan como múltiplos del beat
-            while ioi < self._min_period:
-                ioi *= 2
-            while ioi > self._max_period and ioi / 2 >= self._min_period:
-                ioi /= 2
-            if self._min_period <= ioi <= self._max_period:
+            if self.confidence >= 0.5:
+                # Con lock: plegar RELATIVO al periodo vigente. En una balada a
+                # 75bpm la corchea (periodo/2) es un periodo válido del rango
+                # global (150bpm) → ambigüedad métrica que rompía el lock; el
+                # múltiplo ×2^k más cercano al periodo actual la resuelve.
+                ioi = min(
+                    (ioi * m for m in (0.25, 0.5, 1.0, 2.0, 4.0)),
+                    key=lambda c: abs(c - self._period),
+                )
+                valid = abs(ioi - self._period) <= 0.45 * self._period
+            else:
+                # Sin lock: plegado global (como antes)
+                while ioi < self._min_period:
+                    ioi *= 2
+                while ioi > self._max_period and ioi / 2 >= self._min_period:
+                    ioi /= 2
+                valid = self._min_period <= ioi <= self._max_period
+            if valid:
                 self._intervals.append(ioi)
                 median = statistics.median(self._intervals)
-                self._period += 0.25 * (median - self._period)
+                # Ganancia ADAPTATIVA: si la mediana se corre consistentemente
+                # (baterista humano acelerando/frenando — discos en vivo), seguir
+                # más rápido; estable = suave como antes.
+                err = abs(median - self._period) / self._period
+                gain = min(0.6, 0.25 + 8.0 * max(0.0, err - 0.01))
+                self._period += gain * (median - self._period)
+                self._period = max(
+                    self._min_period, min(self._max_period, self._period)
+                )
 
         # Corrección de fase: ¿el onset cayó donde predijimos un beat?
         error = ((frame - self._origin + self._period / 2) % self._period) - self._period / 2
