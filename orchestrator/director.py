@@ -448,7 +448,9 @@ class MusicDirector:
                 self._focus_crossings = [
                     f for f in self._focus_crossings if self._frame - f < 10 * fr
                 ]
-                if len(self._focus_crossings) >= 3:
+                # 4+: alternar cada ~3s es música (verso stop-start, visto en
+                # vivo sin síntoma visual — el suavizado del lead lo amortigua)
+                if len(self._focus_crossings) >= 4:
                     self.anomalies.report(
                         self._frame, "mando-titubeando", self._snapshot()
                     )
