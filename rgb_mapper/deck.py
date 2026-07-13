@@ -34,7 +34,9 @@ class ColorDeck:
     def _w(self, color: str) -> float:
         """Peso del mood × penalización por repetición (calor)."""
         mood = 1.0 if self.mood_weights is None else max(0.01, self.mood_weights.get(color, 1.0))
-        return mood / (1.0 + 0.18 * self.heat.get(color, 0.0))
+        # 0.35: con 0.18 el color más pesado del mood monopolizaba la base
+        # (purple 34% del tiempo en frío-oscuro) — la repetición debe doler más
+        return mood / (1.0 + 0.35 * self.heat.get(color, 0.0))
 
     def _pick(self, pool: list[str]) -> str:
         """Elige de `pool` ponderado por el mood (la clave)."""
@@ -42,11 +44,22 @@ class ColorDeck:
             return self.grammar.random_color()
         return random.choices(pool, weights=[self._w(c) for c in pool])[0]
 
-    def choose(self, pool: list[str]) -> str:
+    def choose(self, pool: list[str], contrast_from: str | None = None) -> str:
         """Selección PÚBLICA ponderada por mood+calor: para que socios de
         figura y destinos de deriva también respeten la clave de color (con
-        choice uniforme el ámbar se colaba en moods fríos vía el grafo)."""
-        return self._pick(pool)
+        choice uniforme el ámbar se colaba en moods fríos vía el grafo).
+
+        `contrast_from`: además pesa la DISTANCIA de hue a ese color — para
+        acentos: un acento del mismo tono que la base no acentúa nada (medido:
+        62% del violeta en pantalla eran acentos violeta sobre base violeta)."""
+        if not pool:
+            return self.grammar.random_color()
+        if contrast_from is None:
+            return self._pick(pool)
+        weights = [
+            self._w(c) * (0.25 + self.grammar._dist(contrast_from, c)) for c in pool
+        ]
+        return random.choices(pool, weights=weights)[0]
 
     def reseed(self, seed_color: str | None = None) -> None:
         """Paleta nueva: siembra desde la CLAVE del mood, caminando fundibles

@@ -226,6 +226,7 @@ class MusicDirector:
         # (motif > punch > stab/guitarra). Reemplaza los 4 mecanismos sueltos
         # que se pisaban entre sí.
         self._accent_hit_color: str | None = None
+        self._accent_last_color: str | None = None
         self._accent_hit_until = 0
         self._accent_hit_prio = 0
         self._accent_hit_boost = 0.0
@@ -534,6 +535,15 @@ class MusicDirector:
         # ponderado por mood+calor: el socio también respeta la clave de color
         return self.deck.choose(partners) if partners else self.color
 
+    def _accent_pick(self) -> str:
+        """Color para golpes espontáneos (stab/riff): del deck, pero SIN repetir
+        el último acento — el mood concentrado re-elegía purple una y otra vez
+        (medido: 85% de los acentos en frío-oscuro) y el acento se volvía tono."""
+        c = self.deck.pick(self.color, brusque=True)
+        if c == self._accent_last_color:
+            c = self.deck.pick(self.color, brusque=True)  # segunda carta
+        return c
+
     def _fire_accent(
         self, color: str | None, duration: int, prio: int, boost: float
     ) -> None:
@@ -547,6 +557,7 @@ class MusicDirector:
         # PISO de código: todo acento dura lo suficiente para VERSE (~0.2s / 0.4
         # beat), pase lo que pase en el toml → el beat nunca es un parpadeo.
         min_dur = max(int(0.15 * self._frame_rate), int(0.4 * self.tempo.period))
+        self._accent_last_color = color
         self._accent_hit_color = color
         self._accent_hit_until = self._frame + max(min_dur, duration)
         self._accent_hit_prio = prio
@@ -767,7 +778,7 @@ class MusicDirector:
         # (stab) y motivo (doble-golpe) vienen ya rate-limitados del improviser.
         if improv.stab:
             self._fire_accent(
-                self.deck.pick(self.color, brusque=True),
+                self._accent_pick(),
                 max(int(0.35 * self._frame_rate), int(self.tempo.period)),
                 prio=1, boost=0.1,
             )
@@ -832,7 +843,7 @@ class MusicDirector:
             and self._frame >= self._accent_block_until
         ):
             self._fire_accent(
-                self.deck.pick(self.color, brusque=True),
+                self._accent_pick(),
                 int(self.tempo.period), prio=1, boost=0.0,
             )
             self._effect_heat += 0.7  # el riff consume presupuesto → suprime punches/flash encima
@@ -1243,8 +1254,14 @@ class MusicDirector:
             candidates = [
                 c for c in self.deck.principals if c not in (self.color, self._partner)
             ]
+        # el acento ROTA: no repetir el de la figura anterior (mood+contraste
+        # solos re-elegían purple una y otra vez en moods fríos — medido 84%)
+        if len(candidates) > 1 and self._triad_color in candidates:
+            candidates = [c for c in candidates if c != self._triad_color]
         self._triad_color = (
-            self.deck.choose(candidates) if candidates else self._partner
+            self.deck.choose(candidates, contrast_from=self.color)
+            if candidates
+            else self._partner
         )
 
         bpm = self.tempo.bpm
