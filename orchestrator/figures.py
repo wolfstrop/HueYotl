@@ -208,6 +208,40 @@ class Ember(Figure):
         return hue, min(1.0, dim)
 
 
+class Gate(Figure):
+    """APAGADO rítmico deliberado: enciende PEGADO al beat y se queda casi
+    apagado el resto del ciclo — la luz acompaña el ritmo con silencio, no
+    con brillo. A veces un solo color, a veces alterna A/B por ciclo.
+
+    `cycle_beats` lo fija el director según el tempo para respetar el tope
+    anti-estroboscópico del SafetyLimiter (≤3 transiciones/s): a tempo rápido
+    el gate va cada 2 beats. Casi-apagado (no OFF real: el firmware destella
+    blanco al encender)."""
+
+    name = "GATE"
+
+    def __init__(
+        self, measures: int, beats_per_measure: int, cycle_beats: int, alt: bool
+    ):
+        super().__init__(measures, beats_per_measure)
+        self._cycle = max(1, cycle_beats)
+        self._alt = alt
+        self._side = 0
+
+    def on_beat(self, beats_done: int) -> None:
+        if self._alt and beats_done % self._cycle == 0:
+            self._side = 1 - self._side
+
+    def render(self, ctx: FigureContext) -> tuple[float, float]:
+        pos = ((ctx.beats_done % self._cycle) + ctx.phase) / self._cycle
+        hue = ctx.hue_b if (self._alt and self._side) else ctx.hue_a
+        if pos < 0.40:  # ventana ON pegada al beat, con ataque que respira
+            attack = math.exp(-3.0 * (pos / 0.40))
+            dim = ctx.base_dim * (0.75 + 0.25 * attack) + 0.1 * ctx.glow
+            return hue, min(1.0, dim)
+        return hue, 0.05  # el silencio visual que acompaña el ritmo
+
+
 # Pesos de selección por nivel de energía: (figura, peso_quiet..peso_peak)
 FIGURE_WEIGHTS: dict[str, tuple[float, float, float, float, float]] = {
     "SHADOW": (0.5, 1.0, 2.0, 2.5, 2.5),
@@ -216,6 +250,7 @@ FIGURE_WEIGHTS: dict[str, tuple[float, float, float, float, float]] = {
     "STEPS": (1.0, 1.5, 1.5, 1.5, 1.0),
     "PULSE": (0.3, 0.8, 1.5, 2.0, 2.5),
     "EMBER": (4.0, 3.0, 1.5, 0.3, 0.0),  # oscuros puros (le encantan): mucho en lo quieto/medio
+    "GATE": (0.0, 0.3, 1.0, 2.0, 2.5),   # apagado rítmico: pide beat marcado (y tempo confiable)
 }
 LEVEL_INDEX = {"quiet": 0, "low": 1, "medium": 2, "high": 3, "peak": 4}
 
@@ -227,16 +262,26 @@ def pick_figure(
     beats_per_measure: int,
     shadow_kwargs: dict,
     ember_weight: float = 1.0,
+    gate_cycle: int | None = None,
 ) -> Figure:
     """Figura nueva, ponderada por nivel, nunca la misma dos veces seguidas.
-    `ember_weight` escala en vivo cuántos oscuros puros salen."""
+    `ember_weight` escala en vivo cuántos oscuros puros salen. `gate_cycle`:
+    None = GATE prohibido (tempo no confiable — un gate fuera de fase se ve
+    horrible); N = ciclo del gate en beats (lo decide el director)."""
     idx = LEVEL_INDEX.get(level, 2)
-    names = [n for n in FIGURE_WEIGHTS if n != current_name]
+    names = [
+        n for n in FIGURE_WEIGHTS
+        if n != current_name and (n != "GATE" or gate_cycle is not None)
+    ]
     weights = [
         FIGURE_WEIGHTS[n][idx] * (ember_weight if n == "EMBER" else 1.0)
         for n in names
     ]
     name = random.choices(names, weights=weights)[0]
+    if name == "GATE":
+        return Gate(
+            measures, beats_per_measure, gate_cycle, alt=random.random() < 0.5
+        )
     if name == "SHADOW":
         return ShadowPlay(measures, beats_per_measure, **shadow_kwargs)
     if name == "BREATHE":

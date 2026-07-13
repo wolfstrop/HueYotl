@@ -23,6 +23,9 @@ class TempoTracker:
         self._last_onset: int | None = None
         self._intervals: deque[float] = deque(maxlen=12)
         self._hits: deque[int] = deque(maxlen=8)
+        # aciertos con ventana ESTRECHA (±12%): el azar no la puede fingir
+        # (la de confidence es ±30% = el 60% del beat; ruido acierta seguido)
+        self._tight: deque[int] = deque(maxlen=12)
 
     def update(self, frame: int, onset: bool) -> None:
         if not onset:
@@ -62,6 +65,7 @@ class TempoTracker:
 
         # Corrección de fase: ¿el onset cayó donde predijimos un beat?
         error = ((frame - self._origin + self._period / 2) % self._period) - self._period / 2
+        self._tight.append(1 if abs(error) <= self._period * 0.12 else 0)
         if abs(error) <= self._period * 0.3:
             self._origin += 0.35 * error
             self._hits.append(1)
@@ -85,6 +89,14 @@ class TempoTracker:
         if len(self._hits) < 4:
             return 0.0
         return sum(self._hits) / len(self._hits)
+
+    @property
+    def precision(self) -> float:
+        """Qué tan CLAVADOS caen los onsets en el beat predicho (ventana ±12%).
+        El ruido no la puede fingir — para figuras que exigen fase (GATE)."""
+        if len(self._tight) < 8:
+            return 0.0
+        return sum(self._tight) / len(self._tight)
 
     @property
     def bpm(self) -> float:
@@ -112,4 +124,5 @@ class TempoTracker:
         self._last_onset = None
         self._intervals.clear()
         self._hits.clear()
+        self._tight.clear()
         self._period = self._frame_rate * 0.5

@@ -1147,8 +1147,11 @@ class MusicDirector:
             # pasaje sostenido), tickea igual cada periodo → la figura NUNCA se
             # congela esperando un beat que no llega.
             timeout = self._frame - self._last_beat_frame >= self.tempo.period
-            self._last_beat_idx = beat_idx
             if crossed or timeout:
+                # actualizar el índice SOLO al tickear: si el guard de 0.5·periodo
+                # suprime un cruce, el tick se DIFIERE (antes se perdía → la
+                # paridad de GATE y los patrones 4/8 se corrompía y "se desfasaba")
+                self._last_beat_idx = beat_idx
                 self._last_beat_frame = self._frame
                 self._beat_count += 1
                 # TRANSICIÓN cuantizada: el color de transición cae EN el beat
@@ -1276,9 +1279,15 @@ class MusicDirector:
         else:
             measures = random.randint(self._figure_min_measures, self._figure_max_measures)
         current = self._figure.name if self._figure else None
+        # GATE (apagado rítmico) solo con tempo CONFIABLE — fuera de fase se ve
+        # horrible. Ciclo por tempo: rápido → cada 2 beats (≤3 transiciones/s,
+        # el tope del SafetyLimiter anti-estrobo).
+        gate_ok = self.tempo.confidence >= 0.6 and self.tempo.precision >= 0.6
+        gate_cycle = 1 if self.tempo.period >= self._frame_rate * 0.66 else 2
         self._figure = pick_figure(
             self._eff_level(), current, measures, self._beats_per_measure,
             self._shadow_kwargs, ember_weight=self.tuning.ember_weight,
+            gate_cycle=gate_cycle if gate_ok else None,
         )
         # EMBER = oscuro puro: el color base se ancla a un MONO (rojo/azul/
         # morado/verde puro), que es lo que da el juego en lo tenue.
