@@ -1,0 +1,45 @@
+# CALIBRACIÓN EN VIVO — edita y guarda; el foco reacciona en <1s (sin reiniciar).
+# Corre:  .venv/bin/python -m orchestrator.main --debug
+# Los nombres deben coincidir con los del dataclass Tuning. Secciones = cosmético.
+
+[dinamica]
+# PERILLA MAESTRA: 0 = comportamiento fijo (lo que ya se veía muy bien),
+# 1 = dinámica completa (ritmo×intensidad empujan todo). Sube de a poco.
+dynamics_strength = 1.0
+# Modo: auto (adapta solo) | fiesta | chill | rock | hyperpop | classical
+vibe = "auto"
+# Qué tan brusco el cambio de energía para gritar "métele"/"cálmate" (↓ = más sensible)
+surge_threshold = 0.28
+
+[colores]
+mood_strength = 1.0             # 0 = colores como antes; 1 = el mood/tonalidad manda la clave de color
+melody_lead_bias = 0.8          # cuánto la confianza (tonalness vs tempo lock) decide quién lidera; 0 = solo groove (viejo), sube para que la melodía clara mande
+gesture_brightness = 0.35        # cuánto los golpes suben el BRILLO; ↓ = cambian color sin destellar (0 = puro cambio de color, sin destello)
+valence_strength = 0.4          # cuánto empuja el modo mayor/menor (alegre→cálido, triste→frío); crudo, súbelo si acierta
+keep_color_prob = 0.6            # ↑ repite más el mismo color (menos alocado)
+fatigue_seconds = 5.0           # color pegado más de esto → salto al complemento
+palette_rotate_seconds = 12.0   # cada cuánto entra un color NUEVO al pool (aunque no cambie la sección)
+figure_max_seconds = 4.0         # una figura no dura más de esto (anti-congelamiento)
+blackout_total = true            # el blackout de sección apaga TODO (cuarto oscuro); false = solo bajón
+cut_prob = 0.45                  # prob de corte seco OFF→ON en momentos staccato
+punch_cooldown_seconds = 1.5     # ↓ = golpes de color (tercer color) más seguidos
+
+[oscuros]
+ember_weight = 3               # ↑ = más momentos de color puro oscuro (el "oro")
+brightness_ceiling = 0.42        # ↓ = todo más oscuro y los cambios se notan más
+brightness_dynamics = 0.6        # cuánto el brillo respira con la DINÁMICA (intensidad+crescendo); 0 = plano, 1 = swell fuerte
+transition_sensitivity = 0.5     # qué tan fácil detecta cambio de frase/crescendo para mover color AL BEAT (↑ = más sensible)
+swell_strength = 0.7             # cuánto CRECE el brillo cuando el cantante sostiene una nota a todo pulmón (build; 0 = off)
+rhythm_dark = 0.6                # el beat golpea con PULSOS DE OSCURIDAD cuando la melodía lidera (0 = off; ↑ = pozos más profundos)
+burst_drive = 0.7                # ráfaga color-por-beat cuando el ritmo grita (↓ = entra más fácil; 1.0 = nunca)
+gamma_texture = 0.35             # ↑ = más shimmer de brillo en colores sostenidos
+melody_bright = 0.8              # cuánto sigue el brillo el contorno de la melodía (0 = nada)
+
+[flash]
+flash_intensity = 1.2           # umbral: ↑ = flash blanco más raro
+flash_cooldown_seconds = 8     # ↑ = flashes más espaciados
+flash_beats = 1                # largo del flash en beats (↓ = más corto/seco)
+
+[transiciones]
+fade_seconds = 1.2               # largo del fade lento (partes tranquilas)
+latency_seconds = 0.1           # lookahead: ↑ adelanta la luz para caer en el beat
