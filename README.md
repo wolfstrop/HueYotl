@@ -1,6 +1,12 @@
-# luz — WiZ Music Director
+# HueYotl
+
+> *La esencia del hue. El dios viejo de la música y la danza, viviendo en un foco.*
 
 por **GUAZUX**
+
+**Hue** (el tono de color que este director emite frame a frame) + **-yotl**
+(sufijo náhuatl de esencia, como en *mexicayotl*) + un guiño a
+**Huehuecóyotl**, el coyote azteca de la música, la danza y el desmadre.
 
 Visualizador musical en tiempo real para focos WiZ RGB. No es un VU-meter:
 es un **director de iluminación** — extrae ritmo, melodía, armonía y energía
