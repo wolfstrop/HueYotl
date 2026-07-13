@@ -292,7 +292,7 @@ class MusicDirector:
         self._pending_set_frame = 0
         self._fallback_start = -1
         self._focus_crossings: list[int] = []
-        self._prev_focus = 0.5
+        self._lead_side = 0
         self._low_dim_frames = 0
         self._dry_bad_frames = 0
 
@@ -438,15 +438,21 @@ class MusicDirector:
                 self.anomalies.report(self._frame, "calma-con-musica", self._snapshot())
         else:
             self._fallback_start = -1
-        # mando titubeando: el foco cruza el centro demasiado seguido
-        if (self._prev_focus - 0.5) * (self.focus - 0.5) < 0:
-            self._focus_crossings.append(self._frame)
-            self._focus_crossings = [
-                f for f in self._focus_crossings if self._frame - f < 5 * fr
-            ]
-            if len(self._focus_crossings) >= 4:
-                self.anomalies.report(self._frame, "mando-titubeando", self._snapshot())
-        self._prev_focus = self.focus
+        # mando titubeando: el LÍDER COMPROMETIDO cambia de bando muy seguido.
+        # (El foco crudo tiembla en 0.5 todo el tiempo — eso lo absorbe la
+        # histéresis y NO es anomalía; lo aprendimos de un falso positivo real.)
+        side = 1 if self._lead > 0.55 else (-1 if self._lead < 0.45 else 0)
+        if side != 0 and side != self._lead_side:
+            if self._lead_side != 0:  # flip real (el primer compromiso no cuenta)
+                self._focus_crossings.append(self._frame)
+                self._focus_crossings = [
+                    f for f in self._focus_crossings if self._frame - f < 10 * fr
+                ]
+                if len(self._focus_crossings) >= 3:
+                    self.anomalies.report(
+                        self._frame, "mando-titubeando", self._snapshot()
+                    )
+            self._lead_side = side
         # salto de hue grande sin ningún gesto que lo justifique
         jump = abs(((hue - self._last_hue + 0.5) % 1.0) - 0.5)
         intentional = (
