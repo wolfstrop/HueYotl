@@ -1,145 +1,120 @@
-# WiZ Music Sync
+# luz — WiZ Music Director
 
-Sistema modular para controlar focos WiZ RGB con audio en tiempo real.
+Visualizador musical en tiempo real para focos WiZ RGB. No es un VU-meter:
+es un **director de iluminación** — extrae ritmo, melodía, armonía y energía
+del audio del sistema y decide *gestos* de luz (figuras, acentos, apagones,
+swells) como lo haría un operador de consola en un show en vivo.
 
-## Arquitectura
+Sin APIs externas ni pre-análisis: va ciego, en vivo, contra lo que suene.
 
-```
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ Audio Capture│→ │Audio Analyzer│→ │  RGB Mapper  │→ │WiZ Controller│
-│  (capture)   │  │  (fft/bands) │  │ (hue+mood)   │  │   (bulb)     │
-└──────────────┘  └──────┬───────┘  └──────▲───────┘  └──────────────┘
-                         │   ┌──────────┐  │
-                         └──→│ Director │──┘
-                             │ (mood)   │
-                             └──────────┘
-```
+## Qué lo hace distinto
 
-Módulos desacoplados. El WiZ Controller es independiente y reutilizable.
+Los visualizadores típicos mapean bandas→colores (bass=rojo, treble=azul).
+Aquí hay dos capas más arriba:
 
-El **Music Director** es el cerebro. Elige UNA jugada según el carácter
-musical (TempoTracker: PLL que predice beat, BPM, confianza y regularidad)
-y la sostiene mínimo `move_min_seconds`:
+1. **Canales sensores con confianza** — cada aspecto musical lo percibe un
+   módulo que reporta su lectura Y qué tan seguro está:
+   - **Melodía**: contorno del centroide melódico (banda media, sin batería)
+     en 3 escalas de tiempo + *tonalness* (¿hay melodía real o es ruido?)
+     + *actividad* (¿se mueve o es una nota sostenida?)
+   - **Beat**: tempo por PLL (BPM, fase, regularidad) + densidad de onsets
+   - **Armonía**: tonalidad mayor/menor (chroma + perfiles de Krumhansl)
+     → valence; temperatura tímbrica lenta → la *clave de color* del mood
+   - **Energía**: rango adaptativo por percentiles, envolvente de brillo,
+     detección de secciones
+2. **Conductor + Director** — el conductor arbitra **quién lidera el gesto**
+   (melodía ↔ beat) por confianzas con histéresis; si nadie está claro,
+   *fallback*: respirar en el mood en vez de saturar. El director convierte
+   eso en gestos.
 
-| Jugada | Cuándo | Qué hace |
-|--------|--------|----------|
-| `FLOW` | suave, melódico, sin beat confiable | deriva orgánica con INERCIA por caminos de la gramática; el pitch acelera/frena, el onset da una patada |
-| `GROOVE` | beat confiable o denso (rock) | corredor de FIGURAS (abajo) |
-| `MONO` | fuerte pero caótico | un color puro profundo respirando |
-| `BLACKOUT` | cambio de sección con energía | oscuridad breve → estallido con color de contraste |
-| `FLASH` | golpes fuertes en partes altas | pulso blanco deliberado |
+## Gestos (lo que se ve)
 
-**Tres capas** (la figura es la base; encima van acentos y puntuación):
+| Gesto | Cuándo |
+|---|---|
+| Figuras (SHADOW/BREATHE/BOUNCE/STEPS/PULSE/EMBER) | base del GROOVE, 1-4 compases, cuantizadas al beat |
+| Deriva orgánica con inercia (FLOW) | pasajes melódicos; el pitch acelera/frena |
+| Ráfaga color-por-beat | el ritmo grita → color seco ciclando la tríada |
+| Pulsos de oscuridad | la melodía lidera → el beat golpea en el eje OSCURO (no compiten por brillo) |
+| Swell | nota sostenida a todo pulmón → el brillo crece mientras dura |
+| Golpe con cola | snap al color de acento + regreso difuminado |
+| Alto en seco | la música se corta → la luz corta YA; al volver, reanuda con golpe |
+| Blackout de sección | cambio fuerte → oscuridad total → estallido en contraste |
+| Breakdown | voz sola, música callada → hush dramático |
 
-1. **Base (figura)**: 2 colores limpios + ritmo de brillo. SHADOW
-   (color↔sombra azulada), BREATHE (respiración), BOUNCE (A↔B con dip de
-   oscuridad en el cruce), STEPS (degradado en saltos discretos), PULSE
-   (color fijo + golpe al beat). Corren 2-3 compases y rotan. Cambios
-   discretos SOLO en beats (cuantización por construcción). El fundido
-   entre pares SOLO vive en FLOW; en GROOVE los cambios de base **cortan
-   en seco** (`cut_from`, sin untar el salto).
-2. **Acentos (golpe de color)**: un onset fuerte en el beat (kick/tambor)
-   trae el **tercer color** (`grammar.accent_for` — el que funde con ambos,
-   el verde-naranja-**morado**) por un instante y regresa en seco. Con
-   cooldown: es un puñetazo, no una rotación.
-3. **Puntuación (corte OFF→ON)**: el foco WiZ FUNDE el RGB internamente
-   (firmware, no se apaga por parámetro — probado), así que un "snap" por
-   RGB directo se ve suave. El corte seco de verdad se logra **apagando el
-   foco (`state:off`) y encendiéndolo ya en el color nuevo** — rompe el
-   fade del firmware. Se usa en cambios de base y en el estallido tras una
-   sección. Con reja de tiempo — muchos seguidos marean.
+**Color**: gramática de anclas con pares fundibles/de corte (datos editables,
+calibrados viendo el foco) + un deck vivo de 5 colores sembrado por el mood
+(temperatura × profundidad × valence) con anti-repetición. Toda selección de
+color pasa por los pesos del mood — medido con histogramas (en un mood
+frío-oscuro el ámbar cayó de 26% a 3% del tiempo en pantalla).
 
-> **Hardware:** se manda a 30 Hz (cola last-wins). El director corre a
-> 375 fps → el foco solo ve ~30 frames/seg. Todo efecto debe durar
-> ≥~130 ms para sobrevivir esa decimación (la textura de gamma usa pasos
-> de ~140 ms por eso). No subir el rate: inundar de UDP cuelga el firmware.
+**Brillo**: sigue la dinámica musical (intensidad + crescendo), no los
+golpes; compensación de **luminancia percibida** entre hues (a mismo dimming
+el verde se ve ~5× más brillante que el azul); limitador anti-estroboscópico
+de seguridad que no se puede apagar por config.
 
-**Breakdown / respiro**: cuando la energía cae fuerte pero sigue habiendo
-voz (medios) — el cantante solo, la música se calla — el brillo baja a un
-hush dramático; al volver la energía, florece.
+## Hardware (lecciones del foco WiZ, probadas)
 
-**Textura de gamma**: en figuras sostenidas de energía media, micro-saltos
-discretos de gamma en el mapper = shimmer de brillo sin tocar el color.
+- El firmware **funde el RGB internamente**: un snap de color se ve suave.
+  El único corte seco real es OFF→ON (`state:off` → encender ya en el color
+  nuevo) — y al encender destella blanco, así que se usa poco y con reja.
+- Saturación siempre 1.0: cualquier componente acromática enciende los LEDs
+  blancos del foco.
+- Se manda a 30 Hz por UDP *fire-and-forget* (cola last-wins; esperar la
+  respuesta del foco bloquea y produce saltos). ON/OFF sí se confirman con
+  reintento. No subir el rate: inundar de UDP cuelga el firmware.
+- El director corre a 375 fps y el foco ve ~30 → todo efecto dura ≥130 ms
+  para sobrevivir la decimación.
 
-**Bus de acentos unificado**: los cuatro golpes de color (MOTIVO, PUNCH,
-STAB, ACCENT de guitarra) pasan por UN bus con prioridad —un color de golpe
-a la vez, el motivo (doble-golpe = siempre el mismo color) no lo pisa nadie.
-Precedencia global: micro-apagón > BLACKOUT > crossfade > bus de acentos >
-figura. El flash se calla durante el micro-apagón (si no, lo anularía).
-
-La **gramática de color** (`rgb_mapper/grammar.py`) define qué combina:
-colores ancla con nombre, pares fundibles, pares de corte y colores MONO.
-Son datos editables — calibrar viendo el foco.
-
-El **ColorDeck** (`rgb_mapper/deck.py`) es la paleta viva: 3 principales +
-1 entrante + 1 saliente. Lo brusco juega entre principales (repetir el
-mismo color con sombra también vale), lo tranquilo audiciona al entrante,
-y en fronteras de frase tranquilas el entrante se promueve — la paleta
-rota caminando el grafo de la gramática.
-
-El **Improviser** (`orchestrator/improviser.py`) responde a lo que el plan
-no vio: picos de energía (bump de brillo), síncopas/fills fuera de la fase
-predicha (stab de color breve) y predicción cayéndose (replan). Todo con
-cooldowns — improvisar no es alocarse.
-
-El **RGB Mapper** solo renderiza: saturación siempre 1.0 (LEDs blancos del
-foco apagados salvo flash) y brillo via dimming, nunca horneado en el RGB.
-El **WiZ Controller** es independiente: un CLI o app móvil puede usarlo
-directo sin nada del pipeline de audio.
-
-## Instalación
+## Instalación y uso
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-```
 
-## Uso
+# editar config/settings.py → wiz.ip (la IP de tu foco en la LAN)
 
-```bash
-# Modo reactive (audio en tiempo real, default)
-.venv/bin/python -m orchestrator.main
-
-# Modo ambient (colores suaves)
+.venv/bin/python -m orchestrator.main            # reactivo (default)
+.venv/bin/python -m orchestrator.main --debug    # + línea de estado en vivo
 .venv/bin/python -m orchestrator.main --mode ambient
-
-# Visualización de bandas en terminal
-.venv/bin/python -m orchestrator.main --debug
 ```
 
-## Configuración
+Requisitos: Python 3.11+, PulseAudio/PipeWire (captura del monitor del
+sistema), foco WiZ en la misma red.
 
-Editar `config/settings.py`:
+## Calibración EN VIVO
 
-- `wiz.ip`: IP del bulbo WiZ
-- `wiz.update_hz`: Frecuencia de actualización (default: 30)
-- `audio.idle_timeout`: Segundos sin audio antes de entrar en idle (default: 5)
-- `director.shadow_dim`: Qué tan oscuro es el estado sombra (default: 0.18)
-- `director.play_prob_fast/slow`: Cuánto juega la sombra según tempo
-- `director.fade_seconds`: Duración de los crossfades entre pares (default: 1.5)
-- `director.step_intensity`: Qué tan fuerte debe ser un beat para contar (default: 0.35)
-- `director.section_delta`: Sensibilidad de detección de secciones (default: 0.35)
-- `director.flash_enabled`: Flash blanco en golpes fuertes (default: True)
+`config/tuning.toml` se relee cada ~0.5 s mientras corre: edita, guarda y el
+foco cambia sin reiniciar. Perillas principales:
 
-## Módulos
+| Perilla | Qué mueve |
+|---|---|
+| `dynamics_strength` | maestra: 0 = fijo, 1 = dinámica completa |
+| `mood_strength` / `valence_strength` | cuánto manda la clave de color / el modo mayor-menor |
+| `melody_lead_bias` | cuánto deciden las confianzas quién lidera |
+| `brightness_ceiling` / `brightness_dynamics` | techo de brillo / cuánto respira con la frase |
+| `rhythm_dark` / `gesture_brightness` | pozos de oscuridad del beat / brillo de los golpes |
+| `burst_drive` / `swell_strength` | ráfaga color-por-beat / build en nota sostenida |
+| `luminance_comp` | igualar brillo percibido entre colores |
 
-| Módulo | Descripción |
-|--------|-------------|
-| `wiz_controller` | Servicio de control del bulbo (independiente) |
-| `audio_capture` | Captura de audio via PulseAudio/PipeWire, con auto-restart |
-| `audio_analyzer` | FFT, bandas de frecuencia, onset por spectral flux |
-| `rgb_mapper` | Renderista puro: ColorDecision → RGB + dimming |
-| `orchestrator` | Pipeline, Music Director (cerebro del color), modos |
+## Arquitectura
 
-## Resiliencia
+```
+audio_capture → audio_analyzer ─┬→ channels (melodía/beat/armonía/energía)
+      (Pulse)   (STFT, onsets,  │        │ lecturas + confianzas
+                 chroma, tempo) │        ▼
+                                │   conductor (arbitraje + fallback)
+                                │        ▼
+                                └→  director (gestos) → rgb_mapper → safety → wiz_controller
+                                                         (render)    (anti-    (UDP 30Hz)
+                                                                      estrobo)
+```
 
-- Si el stream de audio muere (reproductor cerrado, device desaparece), el
-  pipeline entra en modo idle (luz tenue) y reintenta el stream cada 2s.
-- Al volver el audio, retoma el modo reactive automáticamente.
-- Ctrl+C hace clean shutdown de audio y controller.
+`wiz_controller` es independiente: se puede usar directo sin el pipeline.
 
-## Requisitos
+## Estado
 
-- Python 3.11+
-- PulseAudio o PipeWire
-- Foco WiZ configurado en la misma red
+Funcional y en calibración activa contra oídos/ojos reales (rock, salsa,
+banda, electrónica). Sin suite de tests formal — la verificación es
+simulación sintética por pieza + prueba de oído. Pendientes conocidos:
+seguimiento de guitarra a destiempo, espaciado global de gestos, modos de
+ambiente, CLI.
