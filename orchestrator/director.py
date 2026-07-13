@@ -359,6 +359,12 @@ class MusicDirector:
         self._blackout_reseed = contrast
         self._blackout_until = self._frame + self._blackout_frames
 
+    @staticmethod
+    def _jit(frames: int) -> int:
+        """Jitter ±~25% en cooldowns: sembrados juntos expiraban juntos y los
+        efectos caían en RÁFAGA tras el silencio — desincronizarlos la reparte."""
+        return max(1, int(frames * random.uniform(0.75, 1.3)))
+
     def _mood_contrast(self, color: str) -> str:
         """Contraste PARA CORTES FRECUENTES (fatiga, staccato): el color más
         lejano en hue de entre los que el MOOD tolera (deck + candidatos con
@@ -664,8 +670,8 @@ class MusicDirector:
             self._beat_accent_left -= 1
             # más intensidad → cooldown más corto → acentos más densos
             base = int(self._frame_rate * self.tuning.punch_cooldown_seconds)
-            self._punch_cooldown = int(
-                base * (1.0 - 0.6 * self.dyn.intensity * self.tuning.dynamics_strength)
+            self._punch_cooldown = self._jit(
+                int(base * (1.0 - 0.6 * self.dyn.intensity * self.tuning.dynamics_strength))
             )
         elif (
             self.move == "GROOVE"
@@ -682,8 +688,8 @@ class MusicDirector:
             self._dark_pulse_until = self._frame + max(
                 int(0.12 * self._frame_rate), int(0.3 * self.tempo.period)
             )
-            self._punch_cooldown = int(
-                self._frame_rate * self.tuning.punch_cooldown_seconds * 0.7
+            self._punch_cooldown = self._jit(
+                int(self._frame_rate * self.tuning.punch_cooldown_seconds * 0.7)
             )
 
         # Accent por riff de guitarra/lead
@@ -752,7 +758,7 @@ class MusicDirector:
                 self.color = nxt
                 self._start_fade()
             self.conductor.bias_beat(0.3)
-            self._surge_cooldown = self._surge_cooldown_frames
+            self._surge_cooldown = self._jit(self._surge_cooldown_frames)
             stepped = True
         elif (
             self.tuning.dynamics_strength > 0.15
@@ -761,7 +767,7 @@ class MusicDirector:
         ):
             # CÁLMATE: caída brusca → suelta a figura calmada de una
             self._figure = None
-            self._surge_cooldown = self._surge_cooldown_frames
+            self._surge_cooldown = self._jit(self._surge_cooldown_frames)
             stepped = True
         elif improv.replan and self._frame - self._move_started > self._frame_rate * 3:
             if self._select_move(new_colors=False):
@@ -871,7 +877,9 @@ class MusicDirector:
             self._effect_heat += 1.0
             self._flash_env = onset_intensity
             self._flash_step = onset_intensity / max(1.0, self.tuning.flash_beats * self.tempo.period)
-            self._flash_cooldown = int(self._frame_rate * self.tuning.flash_cooldown_seconds)
+            self._flash_cooldown = self._jit(
+                int(self._frame_rate * self.tuning.flash_cooldown_seconds)
+            )
         flash = self._flash_env
 
         # Textura de gamma: micro-saltos de brillo (mismo color) — sobre figuras
