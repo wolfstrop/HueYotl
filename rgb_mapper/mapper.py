@@ -43,6 +43,12 @@ class RGBMapper:
     ):
         self.flash_saturation = flash_saturation
         self.gamma = gamma
+        # Compensación de LUMINANCIA PERCIBIDA (el "putazo"): a mismo dimming,
+        # el verde se ve ~5× más brillante que el azul (Rec.601). Al saltar de
+        # hue el brillo percibido pegaba un salto aunque el dimming no se moviera.
+        # 0 = off (como antes); 1 = compensación fuerte. Lo fija el pipeline
+        # desde tuning.toml en vivo.
+        self.luminance_comp = 0.0
 
         self._brightness_smooth = BrightnessSmoothing(
             brightness_alpha_up, brightness_alpha_down
@@ -74,6 +80,13 @@ class RGBMapper:
         brightness = pow(max(0.0, min(1.0, brightness)), 1.0 / gamma_eff)
 
         r, g, b = colorsys.hsv_to_rgb(hue, saturation, 1.0)
+        if self.luminance_comp > 0.0:
+            # iguala el brillo PERCIBIDO entre hues: dimming × (ref/lum)^(k/2).
+            # Parcial (raíz) para no apagar verdes ni reventar azules; el flash
+            # ya salió por su max() y no se toca.
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            comp = (0.35 / max(0.08, lum)) ** (0.85 * self.luminance_comp)
+            brightness = max(0.0, min(1.0, brightness * comp))
         dimming = max(10, int(brightness * 255))
         return int(r * 255), int(g * 255), int(b * 255), dimming
 

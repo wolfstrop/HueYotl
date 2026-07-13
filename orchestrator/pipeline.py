@@ -331,6 +331,7 @@ class Pipeline:
                     centroid=self._centroid_ema, valence=valence,
                     tonalness=self.stft.mid_tonalness,
                 )
+                self.mapper.luminance_comp = self.tuning.luminance_comp
                 r, g, b, dimming = self.mapper.render(decision)
                 # Capa de seguridad: limita flashes/estroboscopía (no se puede apagar)
                 r, g, b, dimming = self.safety.filter(r, g, b, dimming)

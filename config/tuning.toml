@@ -32,6 +32,7 @@ transition_sensitivity = 0.5     # qué tan fácil detecta cambio de frase/cresc
 swell_strength = 0.7             # cuánto CRECE el brillo cuando el cantante sostiene una nota a todo pulmón (build; 0 = off)
 rhythm_dark = 0.6                # el beat golpea con PULSOS DE OSCURIDAD cuando la melodía lidera (0 = off; ↑ = pozos más profundos)
 burst_drive = 0.7                # ráfaga color-por-beat cuando el ritmo grita (↓ = entra más fácil; 1.0 = nunca)
+luminance_comp = 0.5             # iguala el brillo PERCIBIDO entre colores (quita el "putazo" al cambiar de hue); 0 = off
 gamma_texture = 0.35             # ↑ = más shimmer de brillo en colores sostenidos
 melody_bright = 0.8              # cuánto sigue el brillo el contorno de la melodía (0 = nada)
 

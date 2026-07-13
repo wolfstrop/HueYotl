@@ -27,6 +27,7 @@ class Tuning:
     swell_strength: float = 0.7      # cuánto CRECE el brillo en una nota sostenida a todo pulmón (build de LD; 0 = off)
     rhythm_dark: float = 0.6         # ritmo en EJE OSCURO: cuando la melodía lidera, el beat golpea con pulsos de oscuridad (0 = off)
     burst_drive: float = 0.7         # umbral de la RÁFAGA color-por-beat cuando el ritmo grita (↓ = entra más fácil; 1 = off)
+    luminance_comp: float = 0.5      # iguala brillo PERCIBIDO entre colores (el verde ciega, el azul apenas se ve); 0 = off (como antes)
     keep_color_prob: float = 0.4     # ↑ repite más el mismo color (menos alocado)
     fatigue_seconds: float = 10.0    # color sostenido más de esto → refresco
     palette_rotate_seconds: float = 12.0  # cada cuánto entra un color NUEVO al pool (rotación de fondo)
