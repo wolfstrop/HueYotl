@@ -22,7 +22,7 @@ palette_rotate_seconds = 12.0   # cada cuánto entra un color NUEVO al pool (aun
 figure_max_seconds = 4.0         # una figura no dura más de esto (anti-congelamiento)
 blackout_total = true            # el blackout de sección apaga TODO (cuarto oscuro); false = solo bajón
 cut_prob = 0.45                  # prob de corte seco OFF→ON en momentos staccato
-punch_cooldown_seconds = 1.5     # ↓ = golpes de color (tercer color) más seguidos
+punch_cooldown_seconds = 0.5     # ↓ = golpes de color (tercer color) más seguidos
 
 [oscuros]
 ember_weight = 3               # ↑ = más momentos de color puro oscuro (el "oro")
@@ -43,4 +43,4 @@ flash_beats = 1                # largo del flash en beats (↓ = más corto/seco
 
 [transiciones]
 fade_seconds = 1.2               # largo del fade lento (partes tranquilas)
-latency_seconds = 0.1           # lookahead: ↑ adelanta la luz para caer en el beat
+latency_seconds = 0.01           # lookahead: ↑ adelanta la luz para caer en el beat

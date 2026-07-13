@@ -442,8 +442,12 @@ class MusicDirector:
         # mando titubeando: el LÍDER COMPROMETIDO cambia de bando muy seguido.
         # (El foco crudo tiembla en 0.5 todo el tiempo — eso lo absorbe la
         # histéresis y NO es anomalía; lo aprendimos de un falso positivo real.)
+        # gracia post-blackout: el cambio de sección ES un vuelco musical — el
+        # mando pelea unos segundos legítimamente (visto en vivo: los 3 titubeos
+        # de una sesión de horas coincidían con apagones de sección)
+        in_section_grace = self._frame - self._blackout_until < 6 * fr
         side = 1 if self._lead > 0.55 else (-1 if self._lead < 0.45 else 0)
-        if side != 0 and side != self._lead_side:
+        if side != 0 and side != self._lead_side and not in_section_grace:
             if self._lead_side != 0:  # flip real (el primer compromiso no cuenta)
                 self._focus_crossings.append(self._frame)
                 self._focus_crossings = [
