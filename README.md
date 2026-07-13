@@ -11,13 +11,11 @@ Sin APIs externas ni pre-análisis: va ciego, en vivo, contra lo que suene.
 
 ## Origen
 
-Compré un foco RGB y el modo "music flow" de la app se veía pitero. Esto es
-lo que debió ser. Construido a puro **vibe coding** (con Claude tecleando y
-un humano de juez), calibrado durante días de sesiones reales: el criterio
-de aceptación nunca fue un test — fue *"me quedé viendo como pendejo el
-reflejo del foco en la tele"*. Jurado calibrador: Enjambre en vivo, Soda
-Stereo, Los Bunkers, Juan Gabriel, salsa, metal, Pink Floyd y la meta
-fundacional: que aguantara a **MUSE**.
+Compré un foco RGB y el modo "music flow" de la app se veía horrible. Esto es
+lo que debió ser. Construido a puro **vibe coding**, calibrado durante días de sesiones reales. 
+Jurado calibrador: Enjambre en vivo, Soda Stereo, Los Bunkers, 
+Juan Gabriel, salsa, metal, Pink Floyd y la meta fundacional: 
+que aguantara a **MUSE**.
 
 ## Qué lo hace distinto
 
