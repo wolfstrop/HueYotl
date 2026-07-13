@@ -42,6 +42,12 @@ class ColorDeck:
             return self.grammar.random_color()
         return random.choices(pool, weights=[self._w(c) for c in pool])[0]
 
+    def choose(self, pool: list[str]) -> str:
+        """Selección PÚBLICA ponderada por mood+calor: para que socios de
+        figura y destinos de deriva también respeten la clave de color (con
+        choice uniforme el ámbar se colaba en moods fríos vía el grafo)."""
+        return self._pick(pool)
+
     def reseed(self, seed_color: str | None = None) -> None:
         """Paleta nueva: siembra desde la CLAVE del mood, caminando fundibles
         para coherencia. El mood decide QUÉ colores; la gramática, que combinen."""
@@ -70,8 +76,9 @@ class ColorDeck:
         pool = [c for c in self.principals if c != current] or list(self.principals)
         if brusque and random.random() < 0.15 and self.outgoing != current:
             return self.outgoing
-        # sesgo de dominancia: el cálido tiende a llevar el ritmo como base
-        weights = [self.grammar.dominance(c) for c in pool]
+        # dominancia (el cálido tiende a llevar el ritmo) × MOOD+calor: la
+        # dominancia sola metía cálidos en moods fríos (ámbar 19% en frío-oscuro)
+        weights = [self.grammar.dominance(c) * self._w(c) for c in pool]
         return random.choices(pool, weights=weights)[0]
 
     def promote(self) -> str:

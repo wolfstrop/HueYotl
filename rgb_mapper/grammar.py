@@ -119,14 +119,20 @@ class ColorGrammar:
         pair = tuple(random.choice(list(FADE_PAIRS)))
         return pair[0], pair[1]
 
+    def accent_candidates(self, a: str, b: str) -> list[str]:
+        """Todos los terceros que funden con AMBOS de la pareja (ordenados:
+        el orden de un set depende del hash del proceso → no determinista)."""
+        candidates = set(self.fade_partners(a)) & set(self.fade_partners(b))
+        candidates -= {a, b}
+        return sorted(candidates)
+
     def accent_for(self, a: str, b: str) -> str | None:
         """Tercer color que funde bien con AMBOS de la pareja actual — el
         'impar que combina' (p.ej. verde-morado-teal forman triángulo).
         None si no existe: no forzar combos que no están en la gramática.
         """
-        candidates = set(self.fade_partners(a)) & set(self.fade_partners(b))
-        candidates -= {a, b}
-        return random.choice(list(candidates)) if candidates else None
+        candidates = self.accent_candidates(a, b)
+        return random.choice(candidates) if candidates else None
 
     def cut_from(self, name: str) -> str:
         partners = self.cut_partners(name)

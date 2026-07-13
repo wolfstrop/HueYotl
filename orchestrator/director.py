@@ -359,6 +359,18 @@ class MusicDirector:
         self._blackout_reseed = contrast
         self._blackout_until = self._frame + self._blackout_frames
 
+    def _mood_contrast(self, color: str) -> str:
+        """Contraste PARA CORTES FRECUENTES (fatiga, staccato): el color más
+        lejano en hue de entre los que el MOOD tolera (deck + candidatos con
+        peso decente). El complemento ciego (cut_from) inyectaba ámbar/rojo
+        como base en moods fríos cada ~10s — queda solo para drama raro
+        (blackout de sección, surge)."""
+        pool = [c for c in set(self.deck.principals + [self.deck.incoming]) if c != color]
+        if not pool:
+            return self.grammar.cut_from(color)
+        far = sorted(pool, key=lambda c: -self.grammar._dist(color, c))[:2]
+        return self.deck.choose(far)
+
     def _flow_target(self) -> str:
         """Destino de la deriva FLOW: el entrante del deck, salvo que SEA el
         color actual (deriva hacia sí mismo = color pegado) → socio fundible."""
@@ -381,7 +393,8 @@ class MusicDirector:
             ]
         if not partners:
             partners = [c for c in self.deck.principals if c != self.color]
-        return random.choice(partners) if partners else self.color
+        # ponderado por mood+calor: el socio también respeta la clave de color
+        return self.deck.choose(partners) if partners else self.color
 
     def _fire_accent(
         self, color: str | None, duration: int, prio: int, boost: float
@@ -622,7 +635,9 @@ class MusicDirector:
             )
         if improv.motif:
             if self._motif_color is None:
-                self._motif_color = random.choice(self.deck.principals)
+                # por mood: el motivo es PEGAJOSO toda la sección — si cae en un
+                # color fuera de clave lo martilla por minutos (medido: ámbar)
+                self._motif_color = self.deck.choose(list(self.deck.principals))
             # prioridad máxima: el motivo NO lo pisa un punch/stab
             self._fire_accent(self._motif_color, int(self.tempo.period), prio=3, boost=0.25)
 
@@ -767,15 +782,15 @@ class MusicDirector:
             # propia y se clavaba hasta 12s en el muro de rock. Con MOMENTUM: no
             # interrumpe un build melódico salvo que ya lleve el doble.
             if self.move == "GROOVE":
-                # refresco al complemento con OFF→ON: lo hace vibrar. Esporádico.
-                self.color = self.grammar.cut_from(self.color)
+                # refresco al contraste DEL MOOD con OFF→ON: vibra sin desentonar
+                self.color = self._mood_contrast(self.color)
                 self._trigger_micro_black()
                 self._figure = None
             elif self.move == "MONO":
                 # muro sostenido: renueva a otro MONO del deck, corte seco (drama)
                 nxt = self.grammar.nearest_mono(self.deck.pick(self.color, brusque=False))
                 if nxt == self.color:  # el mono más cercano era el mismo → contraste
-                    nxt = self.grammar.nearest_mono(self.grammar.cut_from(self.color))
+                    nxt = self.grammar.nearest_mono(self._mood_contrast(self.color))
                 self.color = nxt
             else:  # FLOW: empuja la deriva hacia un socio nuevo (suave)
                 self._flow_partner = self.deck.pick(self.color, brusque=False)
@@ -950,7 +965,8 @@ class MusicDirector:
                     if p in self.deck.principals or p == self.deck.incoming
                 ] or self.grammar.fade_partners(self._flow_partner)
                 if partners:
-                    self._flow_partner = random.choice(partners)
+                    # ponderado por mood: la deriva no se fuga de la clave
+                    self._flow_partner = self.deck.choose(partners)
             else:
                 # ping-pong: regresa al color anterior → JUEGA entre 2, no avanza
                 self.color, self._flow_partner = self._flow_partner, self.color
@@ -1064,9 +1080,9 @@ class MusicDirector:
                 self.color = self.deck.promote()
                 self._start_fade()
             elif brusque and random.random() < self.tuning.cut_prob:
-                # staccato (batería/guitarra): corte de golpe al contraste con
-                # OFF→ON (probado: la única forma de corte seco en este foco)
-                self.color = self.grammar.cut_from(self.color)
+                # staccato (batería/guitarra): corte de golpe al contraste DEL
+                # MOOD con OFF→ON (probado: la única forma de corte seco aquí)
+                self.color = self._mood_contrast(self.color)
                 self._fade_left = 0
                 self._trigger_micro_black()
             else:
@@ -1077,15 +1093,17 @@ class MusicDirector:
 
         self._partner = self._pick_partner()
 
-        # Tercer color del triángulo: funde con AMBOS (el 'impar que combina').
-        # Si la gramática no da uno, un principal libre del deck.
-        third = self.grammar.accent_for(self.color, self._partner)
-        if third is None:
-            pool = [
+        # Tercer color del triángulo: funde con AMBOS (el 'impar que combina'),
+        # elegido POR MOOD — el acento uniforme metía ámbar en moods fríos
+        # (medido: 21% de ámbar en frío-oscuro venía de la tríada de acentos).
+        candidates = self.grammar.accent_candidates(self.color, self._partner)
+        if not candidates:
+            candidates = [
                 c for c in self.deck.principals if c not in (self.color, self._partner)
             ]
-            third = pool[0] if pool else self._partner
-        self._triad_color = third
+        self._triad_color = (
+            self.deck.choose(candidates) if candidates else self._partner
+        )
 
         bpm = self.tempo.bpm
         speed_t = _clamp01((bpm - self._bpm_slow) / max(1.0, self._bpm_fast - self._bpm_slow))
