@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .vibe/
+CLAUDE.md
+.claude/
+AGENTS.md
+.cursor/
