@@ -1,11 +1,23 @@
 # luz — WiZ Music Director
 
+por **GUAZUX**
+
 Visualizador musical en tiempo real para focos WiZ RGB. No es un VU-meter:
 es un **director de iluminación** — extrae ritmo, melodía, armonía y energía
 del audio del sistema y decide *gestos* de luz (figuras, acentos, apagones,
 swells) como lo haría un operador de consola en un show en vivo.
 
 Sin APIs externas ni pre-análisis: va ciego, en vivo, contra lo que suene.
+
+## Origen
+
+Compré un foco RGB y el modo "music flow" de la app se veía pitero. Esto es
+lo que debió ser. Construido a puro **vibe coding** (con Claude tecleando y
+un humano de juez), calibrado durante días de sesiones reales: el criterio
+de aceptación nunca fue un test — fue *"me quedé viendo como pendejo el
+reflejo del foco en la tele"*. Jurado calibrador: Enjambre en vivo, Soda
+Stereo, Los Bunkers, Juan Gabriel, salsa, metal, Pink Floyd y la meta
+fundacional: que aguantara a **MUSE**.
 
 ## Qué lo hace distinto
 
@@ -116,5 +128,10 @@ audio_capture → audio_analyzer ─┬→ channels (melodía/beat/armonía/ener
 Funcional y en calibración activa contra oídos/ojos reales (rock, salsa,
 banda, electrónica). Sin suite de tests formal — la verificación es
 simulación sintética por pieza + prueba de oído. Pendientes conocidos:
-seguimiento de guitarra a destiempo, espaciado global de gestos, modos de
-ambiente, CLI.
+seguimiento de guitarra a destiempo, saltos secos de tempo (metal/prog),
+MCP + CLI para control externo, multi-foco por roles.
+
+## Licencia
+
+GPL-3.0 — © 2026 GUAZUX. Úsalo, aprende de él, compártelo; si lo
+distribuyes modificado, abre tu código igual.
