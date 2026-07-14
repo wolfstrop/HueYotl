@@ -15,6 +15,10 @@ from .figures import FigureContext, pick_figure
 from .gestures import accent_pick, fire_accent, fire_gestures, overlay_gestures, update_flash
 from .improviser import Improviser
 from .moves import render_move
+from .structure import (
+    dry_stop_update, palette_policies, trigger_blackout, trigger_micro_black,
+    update_breakdown,
+)
 
 
 def _lerp_hue(a: float, b: float, t: float) -> float:
@@ -381,10 +385,6 @@ class MusicDirector:
                 min(int(0.35 * self._frame_rate), int(0.75 * self.tempo.period)),
             )
 
-    def _trigger_blackout(self) -> None:
-        contrast = self.grammar.cut_from(self.color)
-        self._blackout_reseed = contrast
-        self._blackout_until = self._frame + self._blackout_frames
 
     @staticmethod
     def _jit(frames: int) -> int:
@@ -433,33 +433,7 @@ class MusicDirector:
 
 
 
-    def _trigger_micro_black(self) -> None:
-        """Apagón cortito de puntuación al cambiar de color base, para que
-        el nuevo estalle en vez de fundirse. Con reja de tiempo: si vienen
-        muchos seguidos marea, el chiste es el timing."""
-        if self._frame < self._micro_black_cooldown:
-            return
-        self._micro_black_until = self._frame + self._micro_black_frames
-        self._micro_black_cooldown = self._frame + self._micro_black_gap_frames
 
-    def _update_breakdown(self, energy: float, mid: float) -> None:
-        """Respiro: la energía cae fuerte pero sigue habiendo voz/medios
-        (el cantante solo, la música se calla). Momento de llevar el brillo
-        a un extremo. Heurístico y conservador."""
-        if not self._breakdown_enabled:
-            return
-        quiet = energy < self._energy_ema * self._breakdown_ratio and energy > 1e-3
-        voice = mid > self._breakdown_voice_min
-        if not self.breakdown:
-            if quiet and voice:
-                self._breakdown_count += 1
-                if self._breakdown_count >= self._breakdown_frames:
-                    self.breakdown = True
-            else:
-                self._breakdown_count = 0
-        elif energy > self._energy_ema * 0.9:
-            self.breakdown = False
-            self._breakdown_count = 0
 
     # ------------------------------------------------------------- proceso
 
@@ -499,7 +473,7 @@ class MusicDirector:
         self._energy_ema = rep_e.ema
         self._energy_envelope = rep_e.envelope
         self.glow += (mid - self.glow) * self._glow_alpha
-        self._update_breakdown(energy, mid)
+        update_breakdown(self, energy, mid)
         # Fatiga: cuántos frames lleva el MISMO color base (para refrescarlo)
         if self.color == self._fatigue_color:
             self._fatigue_frames += 1
@@ -545,54 +519,10 @@ class MusicDirector:
         self.deck.mood_weights = self.grammar.mood_weights(
             temp_eff, depth, breadth, self.tuning.mood_strength
         )
-        # Rotación de FONDO: cada palette_rotate_seconds entra un color NUEVO al
-        # pool aunque no cambie la sección → la paleta evoluciona, no cicla los
-        # mismos 5 para siempre (lo que se sentía repetitivo en secciones largas).
-        # MOMENTUM: si hay una construcción melódica buena en curso (la melodía
-        # lidera Y se mueve), el sistema NO la interrumpe — pospone la rotación
-        # (con tope 2× para no re-atascar). "Se cambia, no por la música" ← esto.
-        # VEDA de colores: cada veda_seconds se vetan 1-2 colores por
-        # veda_duration — el MÁS USADO descansa (el ojo lo agradece) y a veces
-        # cae uno al azar (sorpresa). Nunca el color en pantalla. Fuerza
-        # exploración más allá del heat (idea del usuario).
-        if self.tuning.veda_seconds > 0 and (
-            self._frame - self._last_veda_frame
-            > self._frame_rate * self.tuning.veda_seconds
-        ):
-            self._last_veda_frame = self._frame
-            candidates = [c for c in self.deck.heat if c != self.color]
-            victims = [max(candidates, key=lambda c: self.deck.heat[c])]
-            if random.random() < 0.5:
-                rest = [c for c in candidates if c != victims[0]]
-                if rest:
-                    victims.append(random.choice(rest))
-            self.deck.ban(
-                victims, int(self._frame_rate * self.tuning.veda_duration)
-            )
-            # divorcio inmediato: socio/tríada ya elegidos no respetan la veda
-            # (la figura los rendería hasta 4s más — medido: 24% de fuga)
-            if self._partner in self.deck.banned:
-                self._partner = self._pick_partner()
-            if self._triad_color in self.deck.banned:
-                self._triad_color = self._pick_partner()
-            if self._beat_accent_color in self.deck.banned:
-                self._beat_accent_color = self._triad_color
-            if self._motif_color in self.deck.banned:
-                self._motif_color = None  # el próximo motivo se elige de nuevo
-
+        palette_policies(self)
         building = (
             self._lead < 0.35 and self.melody_act > 0.35 and self.melody_conf > 0.35
         )
-        rotate_frames = int(self._frame_rate * self.tuning.palette_rotate_seconds)
-        overdue = self._frame - self._last_promote_frame > 2 * rotate_frames
-        if self._frame - self._last_promote_frame > rotate_frames and (
-            not building or overdue
-        ):
-            self.color = self.deck.promote()
-            if self._partner == self.color:  # el promovido era el socio → re-elegir
-                self._partner = self._pick_partner()
-            self._start_fade()
-            self._last_promote_frame = self._frame
 
         # ARBITRAJE (Conductor): decide quién lidera el gesto (melodía↔beat) por
         # sus CONFIANZAS reales — tonalness vs tempo lock — con histéresis, y
@@ -620,27 +550,7 @@ class MusicDirector:
         else:
             self._swell += (0.0 - self._swell) * (1.0 / (self._frame_rate * 0.4))
 
-        # ALTO EN SECO: la música se corta de golpe (todo cae, sin voz) → la luz
-        # corta YA (sostiene el color casi a oscuras) y REANUDA CON GOLPE cuando
-        # la música vuelve. Distinto del breakdown (ahí queda voz/medios).
-        if not self._dry_stop:
-            if (
-                self._energy_ema > 0.15
-                and energy < 0.10 * self._energy_ema
-                and mid < 0.05
-            ):
-                self._dry_count += 1
-                if self._dry_count >= int(0.15 * self._frame_rate):
-                    self._dry_stop = True
-            else:
-                self._dry_count = 0
-        elif energy > 0.45 * self._energy_ema:
-            self._dry_stop = False
-            self._dry_count = 0
-            # reanudar con golpe: el tercer color pega al regresar la música
-            fire_accent(self, 
-                self._triad_color, int(0.5 * self.tempo.period), prio=2, boost=0.15
-            )
+        dry_stop_update(self, energy, mid)
         self.focus = mix.focus
         self._lead = mix.lead
         self._fallback = mix.fallback
@@ -700,11 +610,11 @@ class MusicDirector:
                 <= self._beats_per_measure * self.tempo.period
             )
             if level in ("high", "peak") and recent_beat:
-                self._trigger_blackout()
+                trigger_blackout(self)
             elif self._select_move(new_colors=True):
                 if level in ("high", "peak"):
                     self._fade_left = 0  # sección con energía: corte seco, no fundido
-                    self._trigger_micro_black()
+                    trigger_micro_black(self)
                 else:
                     self._start_fade()
             stepped = True
@@ -760,7 +670,7 @@ class MusicDirector:
             if self.move == "GROOVE":
                 # refresco al contraste DEL MOOD con OFF→ON: vibra sin desentonar
                 self.color = self._mood_contrast(self.color)
-                self._trigger_micro_black()
+                trigger_micro_black(self)
                 self._figure = None
             elif self.move == "MONO":
                 # muro sostenido: renueva a otro MONO del deck, corte seco (drama)
@@ -860,7 +770,7 @@ class MusicDirector:
                 # MOOD con OFF→ON (probado: la única forma de corte seco aquí)
                 self.color = self._mood_contrast(self.color)
                 self._fade_left = 0
-                self._trigger_micro_black()
+                trigger_micro_black(self)
             else:
                 self.color = self.deck.pick(self.color, brusque=brusque)
                 if not brusque:
