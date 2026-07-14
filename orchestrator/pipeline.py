@@ -351,6 +351,7 @@ class Pipeline:
                     self.director._frame, self.chroma.chroma, self.chroma.tonic,
                     self.chroma.tonic_frames, energy, self.director.tempo.bpm,
                     self.director._beat_count, decision.section_change,
+                    chroma_dist=self.chroma.chroma_dist,
                 )
                 self.mapper.luminance_comp = self.tuning.luminance_comp
                 r, g, b, dimming = self.mapper.render(decision)

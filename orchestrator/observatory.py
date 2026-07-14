@@ -56,14 +56,18 @@ class Observatory:
         bpm: float,
         beat_count: int,
         section_change: bool,
+        chroma_dist: np.ndarray | None = None,
     ) -> None:
-        # B1 — tensión armónica (solo con tónica firme)
-        if tonic >= 0 and tonic_frames > self._fr * 2:
-            cT = chroma[tonic]
-            cV = chroma[(tonic + 7) % 12]
-            cL = chroma[(tonic + 11) % 12]
+        # B1 — tensión armónica (solo con tónica firme). USA LA DISTRIBUCIÓN
+        # no-negativa: el vector centrado (para correlación) tiene negativos y
+        # el cociente daba tensiones absurdas (visto en vivo: tns-0.52).
+        cd = chroma_dist if chroma_dist is not None else chroma
+        if tonic >= 0 and tonic_frames > self._fr * 2 and cd.min() >= 0.0:
+            cT = cd[tonic]
+            cV = cd[(tonic + 7) % 12]
+            cL = cd[(tonic + 11) % 12]
             t_raw = (cV + cL) / (cT + cV + cL + 1e-9)
-            F = np.abs(np.fft.rfft(chroma))
+            F = np.abs(np.fft.rfft(cd))
             f5_raw = 1.0 - F[5] / (F[1:].sum() + 1e-9)
             a = 1.0 / (self._fr * 1.0)
             self.tension += (float(t_raw) - self.tension) * a
