@@ -496,6 +496,18 @@ class MusicDirector:
                 self.anomalies.report(self._frame, "luz-muerta", self._snapshot())
         else:
             self._low_dim_frames = 0
+        # OBSERVACIÓN (para la tabla de precedencia): gesto brillante montándose
+        # sobre figura oscura — el usuario siente que "las figuras se pisan".
+        # Junta cuentas de QUÉ pares chocan; no es bug per se, es censo.
+        bright_gesture = (
+            self._frame < self._accent_hit_until or self._burst_color is not None
+        )
+        if bright_gesture and self.state in ("EMBER", "GATE") and dimming > 0.3:
+            self.anomalies.report(
+                self._frame, "gesto-sobre-oscuro",
+                {**self._snapshot(), "burst": self._burst_color or "-",
+                 "acento": self._accent_hit_color or "-"},
+            )
         # alto en seco con voz presente: falso positivo del detector
         if self._dry_stop and mid > 0.15:
             self._dry_bad_frames += 1
