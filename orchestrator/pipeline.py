@@ -239,6 +239,7 @@ class Pipeline:
         dd = self.director
         if dd._frame % 62 != 0:  # throttle ~6Hz (375fps/62) — legible para humanos
             return
+        up = int(dd._frame / 375.0)  # tiempo de música procesada (correlacionar con la rola)
         tempo = dd.tempo
         ev = []
         if decision.blackout:
@@ -286,7 +287,7 @@ class Pipeline:
         )
         mode = f" [{dd.dyn.mode}]" if dd.dyn.mode != "auto" else ""
         line = (
-            f"♪ {dd.move:<6}·{dd.state:<7} {dd.color:>7}→{partner:<7} "
+            f"♪{up//60:02d}:{up%60:02d} {dd.move:<6}·{dd.state:<7} {dd.color:>7}→{partner:<7} "
             f"rit{dd.dyn.groove:.2f} int{dd.dyn.intensity:.2f}{mode} "
             f"{tempo.bpm:5.1f}bpm  {decision.level:<6} dim{dimming:3d}  "
             f"L{self._spark(low)} M{self._spark(mid)} H{self._spark(high)}  "

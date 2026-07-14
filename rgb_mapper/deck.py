@@ -99,8 +99,8 @@ class ColorDeck:
     def pick(self, current: str, brusque: bool) -> str:
         """Siguiente color. Brusco = principales (+saliente raro);
         tranquilo = el entrante tiene más chance de audicionarse."""
-        if not brusque and random.random() < 0.4:
-            return self.incoming
+        if not brusque and random.random() < 0.4 and self.incoming != current:
+            return self.incoming  # (≠ current: el RIFF entre iguales es invisible)
         pool = [c for c in self.principals if c != current] or list(self.principals)
         if brusque and random.random() < 0.15 and self.outgoing != current:
             return self.outgoing
