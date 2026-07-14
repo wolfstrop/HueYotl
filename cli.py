@@ -44,8 +44,10 @@ class HueYotlTUI(App):
 
     def __init__(self) -> None:
         super().__init__()
-        settings = Settings()
-        self.wiz = WizProtocol(settings.wiz.ip, settings.wiz.port)
+        self._settings = Settings()
+        # pywizlight exige un event loop AL CONSTRUIRSE → se crea en on_mount
+        # (dentro del loop de Textual), no aquí (la terminal aún no tiene loop)
+        self.wiz: WizProtocol | None = None
         self.proc: subprocess.Popen | None = None
         self.mode_name = ""
         self._dim = 60  # 0-255, se sincroniza con el estado real al refrescar
@@ -57,12 +59,15 @@ class HueYotlTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.wiz = WizProtocol(self._settings.wiz.ip, self._settings.wiz.port)
         self.set_interval(3.0, self.refresh_status)
         self.call_later(self.refresh_status)
 
     # ------------------------------------------------------------- estado
 
     async def refresh_status(self) -> None:
+        if self.wiz is None:
+            return
         status = self.query_one("#status", Static)
         if self.proc is not None:
             if self.proc.poll() is None:
