@@ -371,8 +371,12 @@ class MusicDirector:
         if self.move == "FLOW":
             self._fade_left = self._fade_frames
         else:
+            # ¾ de beat CON TOPE de 0.35s: escala con el tempo en rápidas pero
+            # no se unta en lentas (sesión real a ~100bpm: 0.45-0.51s se sintió
+            # raro — el corte fresco vive por debajo de ~0.35s)
             self._fade_left = max(
-                int(0.12 * self._frame_rate), int(0.75 * self.tempo.period)
+                int(0.12 * self._frame_rate),
+                min(int(0.35 * self._frame_rate), int(0.75 * self.tempo.period)),
             )
 
     def _trigger_blackout(self) -> None:
@@ -559,9 +563,19 @@ class MusicDirector:
         return self.deck.choose(partners) if partners else self.color
 
     def _accent_pick(self) -> str:
-        """Color para golpes espontáneos (stab/riff): del deck, pero SIN repetir
-        el último acento — el mood concentrado re-elegía purple una y otra vez
-        (medido: 85% de los acentos en frío-oscuro) y el acento se volvía tono."""
+        """Color para golpes (stab/riff/punch): LA DESPEDIDA — "para sacar un
+        color hay que ponerlo en el beat". El SALIENTE del deck pone el golpe
+        (~60%): el sistema anuncia qué color se va. Si el saliente desentona
+        con el mood o es el par activo, carta del deck sin repetir el último."""
+        out = self.deck.outgoing
+        if (
+            out
+            and out not in (self.color, self._partner)
+            and out not in self.deck.banned
+            and self.deck._w(out) > 0.05
+            and random.random() < 0.6
+        ):
+            return out
         c = self.deck.pick(self.color, brusque=True)
         if c == self._accent_last_color:
             c = self.deck.pick(self.color, brusque=True)  # segunda carta
@@ -864,7 +878,7 @@ class MusicDirector:
             # arranca un PATRÓN rítmico: el color de acento golpea en los próximos
             # 4 u 8 tiempos (se mantiene en el ritmo), no un golpe suelto que se corta
             self._effect_heat += 1.0
-            self._beat_accent_color = self._triad_color
+            self._beat_accent_color = self._accent_pick()  # la despedida pone el beat
             self._beat_accent_left = random.choice([4, 8])
             self._fire_accent(self._beat_accent_color, 0, prio=2, boost=0.2)  # el 1er golpe ya
             self._beat_accent_left -= 1
