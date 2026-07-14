@@ -43,6 +43,15 @@ class MelodyChannel:
         self._c_center = 0.5
         self._c_amp = 0.05
         self.contour_bright = 0.5
+        # RELOJ MELÓDICO: el contorno vive en MESETAS (notas); un salto
+        # sostenido = nota nueva → tick. Con la tasa de notas el director sabe
+        # cuándo la melodía ES el ritmo (riff "tararara") y puede clockear
+        # gestos por NOTA en vez de por beat.
+        self._plateau = 0.5
+        self._jump_frames = 0
+        self._note_refractory = 0
+        self.note_tick = False
+        self.note_rate = 0.0  # notas por segundo (EMA ~2s)
 
     def update(self, centroid: float, tonalness: float) -> MelodyReport:
         if centroid < self._lo:
@@ -68,6 +77,26 @@ class MelodyChannel:
         # contorno LENTO (~0.8s) para el BRILLO: la forma, no cada nota → no vibra
         self.contour_slow += (self.contour - self.contour_slow) * (1.0 / (self._fr * 0.8))
         self.confidence = tonalness  # ya viene suavizada del analizador
+        # detección de NOTA: salto de meseta sostenido ≥50ms (el vibrato no).
+        # Tras el tick, refractario 120ms con la meseta PERSIGUIENDO al contorno
+        # (el tránsito de una nota tickeaba doble: a mitad y al aterrizar).
+        self.note_tick = False
+        if self._note_refractory > 0:
+            self._note_refractory -= 1
+            self._plateau = self.contour  # persigue mientras aterriza
+            self._jump_frames = 0
+        elif abs(self.contour - self._plateau) > 0.10:
+            self._jump_frames += 1
+            if self._jump_frames >= int(self._fr * 0.05):
+                self._plateau = self.contour
+                self._jump_frames = 0
+                self._note_refractory = int(self._fr * 0.12)
+                self.note_tick = True
+        else:
+            self._jump_frames = 0
+        self.note_rate += (
+            (self._fr if self.note_tick else 0.0) - self.note_rate
+        ) * (1.0 / (self._fr * 2.0))
         # AGC: normaliza el contorno lento por su propia amplitud reciente →
         # poco movimiento melódico = respiración de brillo visible igual.
         # Compuerta por confianza: sin melodía real no se amplifica ruido.

@@ -242,6 +242,24 @@ class Gate(Figure):
         return hue, 0.05  # el silencio visual que acompaña el ritmo
 
 
+class Duet(Figure):
+    """El tun-TA: beat FUERTE = color A pleno con ataque; beat débil = color B
+    quedito. Pareja de CONTRASTE (el director la elige de los cut-partners:
+    rojo↔azul y compañía) — alternados en seco, NUNCA fundidos. Y a lo largo
+    de la figura ambos SUBEN despacio ("juegan quedito y luego suben")."""
+
+    name = "DUET"
+
+    def render(self, ctx: FigureContext) -> tuple[float, float]:
+        strong = ctx.beats_done % 2 == 0
+        rise = 0.75 + 0.35 * min(1.0, ctx.beats_done / max(1, self.total_beats - 1))
+        if strong:
+            attack = math.exp(-4.0 * ctx.phase)
+            dim = ctx.base_dim * rise * (0.8 + 0.2 * attack)
+            return ctx.hue_a, min(1.0, dim + 0.1 * ctx.glow)
+        return ctx.hue_b, max(0.07, ctx.base_dim * rise * 0.4)
+
+
 # Pesos de selección por nivel de energía: (figura, peso_quiet..peso_peak)
 FIGURE_WEIGHTS: dict[str, tuple[float, float, float, float, float]] = {
     "SHADOW": (0.5, 1.0, 2.0, 2.5, 2.5),
@@ -251,6 +269,7 @@ FIGURE_WEIGHTS: dict[str, tuple[float, float, float, float, float]] = {
     "PULSE": (0.3, 0.8, 1.5, 2.0, 2.5),
     "EMBER": (4.0, 3.0, 1.5, 0.3, 0.0),  # oscuros puros (le encantan): mucho en lo quieto/medio
     "GATE": (0.0, 0.3, 1.0, 2.0, 2.5),   # apagado rítmico: pide beat marcado (y tempo confiable)
+    "DUET": (0.5, 1.2, 1.5, 1.5, 1.0),   # tun-TA fuerte/débil con pareja de contraste
 }
 LEVEL_INDEX = {"quiet": 0, "low": 1, "medium": 2, "high": 3, "peak": 4}
 
@@ -282,6 +301,8 @@ def pick_figure(
         return Gate(
             measures, beats_per_measure, gate_cycle, alt=random.random() < 0.5
         )
+    if name == "DUET":
+        return Duet(measures, beats_per_measure)
     if name == "SHADOW":
         return ShadowPlay(measures, beats_per_measure, **shadow_kwargs)
     if name == "BREATHE":

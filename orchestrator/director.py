@@ -212,6 +212,7 @@ class MusicDirector:
         self._flow_hue = self.grammar.hue(self.color)
         self._flow_vel = 0.0
         self._flow_arrivals = 0  # ping-pong entre 2 colores antes de saltar a uno nuevo
+        self._riff_side = 0      # lado del color-por-NOTA en modo RIFF
 
         # Corredor de figuras (conteo de beats RELATIVO: el índice absoluto
         # del PLL salta cuando el periodo se re-estima)
@@ -360,15 +361,19 @@ class MusicDirector:
         return True
 
     def _start_fade(self) -> None:
-        # FLOW = fundido lento; GROOVE = fundido CORTO (~0.3s) para los cambios
-        # tranquilos (recupera los desvanecimientos sin perder el ritmo); MONO = seco.
+        # FLOW = fundido lento; GROOVE = fundido corto EN BEATS (~¾ de beat:
+        # a canción rápida transición rápida, a lenta más untada — "que
+        # encajen", no segundos fijos); MONO = seco.
         if self.move == "MONO":
             self._fade_left = 0
             return
         self._fade_from = self._last_hue
-        self._fade_left = (
-            self._fade_frames if self.move == "FLOW" else int(0.3 * self._frame_rate)
-        )
+        if self.move == "FLOW":
+            self._fade_left = self._fade_frames
+        else:
+            self._fade_left = max(
+                int(0.12 * self._frame_rate), int(0.75 * self.tempo.period)
+            )
 
     def _trigger_blackout(self) -> None:
         contrast = self.grammar.cut_from(self.color)
@@ -576,7 +581,9 @@ class MusicDirector:
             return
         # PISO de código: todo acento dura lo suficiente para VERSE (~0.2s / 0.4
         # beat), pase lo que pase en el toml → el beat nunca es un parpadeo.
-        min_dur = max(int(0.15 * self._frame_rate), int(0.4 * self.tempo.period))
+        # piso EN BEATS: los golpes de color duran proporcional al tempo —
+        # en lentas se saborean ("beats morados más largos"), en rápidas encajan
+        min_dur = max(int(0.15 * self._frame_rate), int(0.8 * self.tempo.period))
         self._accent_last_color = color
         self._accent_hit_color = color
         self._accent_hit_until = self._frame + max(min_dur, duration)
@@ -1141,6 +1148,21 @@ class MusicDirector:
             hue = (self.grammar.hue(self.color) + 0.02 * math.sin(self._wobble_phase)) % 1.0
             return hue, min(1.0, base_dim + 0.15 * glow), False
 
+        # RIFF (reloj melódico v1): cuando la melodía ES el ritmo — notas
+        # rápidas (tararara-tururú) con la melodía al mando — el color CAMBIA
+        # POR NOTA entre el color y el socio, seco. La deriva no puede seguir
+        # eso; el reloj de notas sí. Escaso a propósito: pide tasa sostenida.
+        mc = self.melody_channel
+        if mc.note_rate >= 2.0 and mc.confidence > 0.35 and self._lead < 0.5:
+            self.state = "RIFF"
+            if mc.note_tick:
+                self._riff_side = 1 - self._riff_side
+            hue = self.grammar.hue(
+                self.color if self._riff_side == 0 else self._flow_partner
+            )
+            mel_b = math.tanh((self._melody_bright_c - 0.5) * 2.2) * 0.5 * self.tuning.melody_bright
+            return hue, min(0.85, _clamp01(base_dim + 0.12 * glow + mel_b)), False
+
         # FLOW: deriva orgánica con INERCIA (Fase 3 recuperada) por caminos de
         # la gramática — solo entre fade-partners, así nunca choca. El pitch
         # acelera (agudo) o frena (grave); el onset da una patada al movimiento;
@@ -1358,6 +1380,16 @@ class MusicDirector:
         )
         # EMBER = oscuro puro: el color base se ancla a un MONO (rojo/azul/
         # morado/verde puro), que es lo que da el juego en lo tenue.
+        if self._figure.name == "DUET":
+            # pareja de CONTRASTE (cut-partners): rojo↔azul y compañía —
+            # alternados en seco por la figura, nunca fundidos (el fundido
+            # rojo-azul pasa por todo el morado, por eso estaba prohibido;
+            # la alternancia discreta lo vuelve legal y precioso)
+            contrast = [
+                c for c in self.grammar.cut_partners(self.color) if c != self.color
+            ]
+            if contrast:
+                self._partner = self.deck.choose(contrast)
         if self._figure.name == "EMBER":
             mono = self.grammar.nearest_mono(self.color)
             if mono != self.color:
