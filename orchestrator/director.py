@@ -7,7 +7,7 @@ from rgb_mapper.mapper import ColorDecision
 
 from config.tuning import Tuning
 
-from .anomaly import AnomalyLog
+from .anomaly import AnomalyLog, check_anomalies
 from .channels import BeatChannel, EnergyChannel, HarmonyChannel, MelodyChannel
 from .conductor import Conductor
 from .dynamics import MODE_BIAS, Dynamics
@@ -390,140 +390,7 @@ class MusicDirector:
         efectos caían en RÁFAGA tras el silencio — desincronizarlos la reparte."""
         return max(1, int(frames * random.uniform(0.75, 1.3)))
 
-    def _snapshot(self) -> dict:
-        """Qué estaba haciendo el director — el contexto de una anomalía."""
-        return {
-            "seg": round(self._frame / self._frame_rate, 1),
-            "move": self.move,
-            "figura": self.state,
-            "color": self.color,
-            "socio": self._partner,
-            "pendiente": self._pending_color,
-            "lead": round(self._lead, 2),
-            "foco": round(self.focus, 2),
-            "calma": self._fallback,
-            "mel_conf": round(self.melody_conf, 2),
-            "mel_act": round(self.melody_act, 2),
-            "tempo_conf": round(self.tempo.confidence, 2),
-            "bpm": round(self.tempo.bpm, 1),
-            "energia": round(self._energy_ema, 3),
-            "heat": round(self._effect_heat, 2),
-            "swell": round(self._swell, 2),
-            "fade_left": self._fade_left,
-        }
 
-    def _check_anomalies(
-        self, hue: float, dimming: float, in_dip: bool, energy: float, mid: float,
-        stepped: bool = False,
-    ) -> None:
-        """Invariantes del director: si algo 'que no debería pasar' pasa, va a
-        la bitácora con snapshot. Cada chequeo es barato; el cooldown evita spam."""
-        fr = self._frame_rate
-        # socio == color: el par no tiene a dónde degradar (bug A→A)
-        if self.move == "GROOVE" and self._partner == self.color:
-            self._anom_partner_eq += 1
-            if self._anom_partner_eq > fr:
-                self.anomalies.report(self._frame, "socio==color", self._snapshot())
-        else:
-            self._anom_partner_eq = 0
-        # color pegado: mide el último cambio VISIBLE del color base (independiente
-        # del contador de fatiga, que un escape roto puede resetear sin cambiar nada)
-        if self.color != self._anom_prev_color:
-            self._anom_prev_color = self.color
-            self._anom_color_since = self._frame
-        elif (
-            self._frame - self._anom_color_since
-            > 2.2 * fr * self.tuning.fatigue_seconds
-        ):
-            self.anomalies.report(self._frame, "color-pegado", self._snapshot())
-        # transición cuantizada que nunca cayó en un beat
-        if (
-            self._pending_color is not None
-            and self._frame - self._pending_set_frame > 2.5 * self.tempo.period
-        ):
-            self.anomalies.report(self._frame, "transicion-no-cayo", self._snapshot())
-        # fallback (~calma) largo CON música sonando: el conductor está perdido
-        if self._fallback and energy > 0.3:
-            if self._fallback_start < 0:
-                self._fallback_start = self._frame
-            elif self._frame - self._fallback_start > 20 * fr:
-                self.anomalies.report(self._frame, "calma-con-musica", self._snapshot())
-        else:
-            self._fallback_start = -1
-        # mando titubeando: el LÍDER COMPROMETIDO cambia de bando muy seguido.
-        # (El foco crudo tiembla en 0.5 todo el tiempo — eso lo absorbe la
-        # histéresis y NO es anomalía; lo aprendimos de un falso positivo real.)
-        # gracia post-blackout: el cambio de sección ES un vuelco musical — el
-        # mando pelea unos segundos legítimamente (visto en vivo: los 3 titubeos
-        # de una sesión de horas coincidían con apagones de sección)
-        in_section_grace = self._frame - self._blackout_until < 6 * fr
-        side = 1 if self._lead > 0.55 else (-1 if self._lead < 0.45 else 0)
-        if side != 0 and side != self._lead_side and not in_section_grace:
-            if self._lead_side != 0:  # flip real (el primer compromiso no cuenta)
-                self._focus_crossings.append(self._frame)
-                self._focus_crossings = [
-                    f for f in self._focus_crossings if self._frame - f < 10 * fr
-                ]
-                # 4+: alternar cada ~3s es música (verso stop-start, visto en
-                # vivo sin síntoma visual — el suavizado del lead lo amortigua)
-                if len(self._focus_crossings) >= 4:
-                    self.anomalies.report(
-                        self._frame, "mando-titubeando", self._snapshot()
-                    )
-            self._lead_side = side
-        # salto de hue grande sin ningún gesto que lo justifique
-        jump = abs(((hue - self._last_hue + 0.5) % 1.0) - 0.5)
-        intentional = (
-            stepped  # cambio de base declarado (frontera de figura, corte brusco)
-            or in_dip
-            or self._fade_left > 0
-            or self._frame < self._accent_hit_until
-            or self._accent_release_left > 0
-            or self._burst_color is not None
-            or self._frame <= self._blackout_until
-            or self.move == "MONO"  # su cambio de fatiga es seco a propósito
-            # figuras de paso DISCRETO: sus saltos de hue son su lenguaje
-            or self.state in ("STEPS", "SHADOW", "BOUNCE")
-            # cambio CUANTIZADO: salto en el tick de beat = la promesa de la
-            # gramática (los swaps A/B de las figuras caen ahí)
-            or (self.move == "GROOVE" and self._frame - self._last_beat_frame <= 2)
-        )
-        if jump > 0.25 and not intentional:
-            self.anomalies.report(
-                self._frame, "salto-color-sin-gesto",
-                {**self._snapshot(), "salto": round(jump, 3)},
-            )
-        # luz muerta: dim en el piso con música y sin razón declarada
-        if (
-            dimming <= self._blackout_floor + 0.03
-            and energy > 0.25
-            and not (in_dip or self._dry_stop or self.breakdown)
-            and self._frame >= self._blackout_until
-        ):
-            self._low_dim_frames += 1
-            if self._low_dim_frames > 5 * fr:
-                self.anomalies.report(self._frame, "luz-muerta", self._snapshot())
-        else:
-            self._low_dim_frames = 0
-        # OBSERVACIÓN (para la tabla de precedencia): gesto brillante montándose
-        # sobre figura oscura — el usuario siente que "las figuras se pisan".
-        # Junta cuentas de QUÉ pares chocan; no es bug per se, es censo.
-        bright_gesture = (
-            self._frame < self._accent_hit_until or self._burst_color is not None
-        )
-        if bright_gesture and self.state in ("EMBER", "GATE") and dimming > 0.3:
-            self.anomalies.report(
-                self._frame, "gesto-sobre-oscuro",
-                {**self._snapshot(), "burst": self._burst_color or "-",
-                 "acento": self._accent_hit_color or "-"},
-            )
-        # alto en seco con voz presente: falso positivo del detector
-        if self._dry_stop and mid > 0.15:
-            self._dry_bad_frames += 1
-            if self._dry_bad_frames > 0.5 * fr:
-                self.anomalies.report(self._frame, "seco-con-voz", self._snapshot())
-        else:
-            self._dry_bad_frames = 0
 
     def _mood_contrast(self, color: str) -> str:
         """Contraste PARA CORTES FRECUENTES (fatiga, staccato): el color más
@@ -1114,7 +981,7 @@ class MusicDirector:
         ):
             texture = self.tuning.gamma_texture
 
-        self._check_anomalies(hue, dimming, in_dip, energy, mid, stepped)
+        check_anomalies(self, hue, dimming, in_dip, energy, mid, stepped)
         self._last_hue = hue
         # anti-repetición: alimenta el 'calor' con el color realmente MOSTRADO
         # (incluye el morado de tránsito de los fades) → se penaliza en la selección
