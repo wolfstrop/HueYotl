@@ -81,11 +81,18 @@ class RGBMapper:
 
         r, g, b = colorsys.hsv_to_rgb(hue, saturation, 1.0)
         if self.luminance_comp > 0.0:
-            # iguala el brillo PERCIBIDO entre hues: dimming × (ref/lum)^(k/2).
-            # Parcial (raíz) para no apagar verdes ni reventar azules; el flash
-            # ya salió por su max() y no se toca.
+            # iguala el brillo PERCIBIDO entre hues — v2, sin robar extremos
+            # (v1 comprimía el rango: "le falta brillo" + "antes oscurecía más"):
+            # · la SUBIDA de hues oscuros se desvanece cuando el momento es
+            #   deliberadamente oscuro (EMBER/pozos/pisos siguen profundos)
+            # · el RECORTE de hues brillantes se suaviza ×0.6 (los picos ciegan)
             lum = 0.299 * r + 0.587 * g + 0.114 * b
             comp = (0.35 / max(0.08, lum)) ** (0.85 * self.luminance_comp)
+            if comp > 1.0:
+                dark_intent = max(0.0, min(1.0, decision.dimming / 0.25))
+                comp = 1.0 + (comp - 1.0) * dark_intent
+            else:
+                comp = 1.0 + (comp - 1.0) * 0.6
             brightness = max(0.0, min(1.0, brightness * comp))
         dimming = max(10, int(brightness * 255))
         return int(r * 255), int(g * 255), int(b * 255), dimming
