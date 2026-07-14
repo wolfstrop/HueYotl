@@ -12,6 +12,7 @@ from .channels import BeatChannel, EnergyChannel, HarmonyChannel, MelodyChannel
 from .conductor import Conductor
 from .dynamics import MODE_BIAS, Dynamics
 from .figures import FigureContext, pick_figure
+from .gestures import accent_pick, fire_accent, fire_gestures, overlay_gestures, update_flash
 from .improviser import Improviser
 
 
@@ -429,47 +430,7 @@ class MusicDirector:
         # ponderado por mood+calor: el socio también respeta la clave de color
         return self.deck.choose(partners) if partners else self.color
 
-    def _accent_pick(self) -> str:
-        """Color para golpes (stab/riff/punch): LA DESPEDIDA — "para sacar un
-        color hay que ponerlo en el beat". El SALIENTE del deck pone el golpe
-        (~60%): el sistema anuncia qué color se va. Si el saliente desentona
-        con el mood o es el par activo, carta del deck sin repetir el último."""
-        out = self.deck.outgoing
-        if (
-            out
-            and out not in (self.color, self._partner)
-            and out not in self.deck.banned
-            and self.deck._w(out) > 0.05
-            and random.random() < 0.6
-        ):
-            return out
-        c = self.deck.pick(self.color, brusque=True)
-        if c == self._accent_last_color:
-            c = self.deck.pick(self.color, brusque=True)  # segunda carta
-        return c
 
-    def _fire_accent(
-        self, color: str | None, duration: int, prio: int, boost: float
-    ) -> None:
-        """Bus de acentos: un solo color de golpe a la vez. Un acento nuevo
-        solo pisa al vigente si este ya expiró o si trae mayor prioridad
-        (motif > punch > stab/guitarra) — así el motivo no se rompe."""
-        if color is None:
-            return
-        if color in self.deck.banned:  # la veda también aplica a los golpes
-            color = self._triad_color if self._triad_color not in self.deck.banned else self._partner
-        if self._frame < self._accent_hit_until and prio < self._accent_hit_prio:
-            return
-        # PISO de código: todo acento dura lo suficiente para VERSE (~0.2s / 0.4
-        # beat), pase lo que pase en el toml → el beat nunca es un parpadeo.
-        # piso EN BEATS: los golpes de color duran proporcional al tempo —
-        # en lentas se saborean ("beats morados más largos"), en rápidas encajan
-        min_dur = max(int(0.15 * self._frame_rate), int(0.8 * self.tempo.period))
-        self._accent_last_color = color
-        self._accent_hit_color = color
-        self._accent_hit_until = self._frame + max(min_dur, duration)
-        self._accent_hit_prio = prio
-        self._accent_hit_boost = boost
 
     def _trigger_micro_black(self) -> None:
         """Apagón cortito de puntuación al cambiar de color base, para que
@@ -676,7 +637,7 @@ class MusicDirector:
             self._dry_stop = False
             self._dry_count = 0
             # reanudar con golpe: el tercer color pega al regresar la música
-            self._fire_accent(
+            fire_accent(self, 
                 self._triad_color, int(0.5 * self.tempo.period), prio=2, boost=0.15
             )
         self.focus = mix.focus
@@ -712,81 +673,7 @@ class MusicDirector:
             energy, self._energy_ema, strong_onset, onset_intensity,
             phase_now, beat_locked, self.tempo.confidence,
         )
-        # Todos los "golpes de color" van al MISMO bus con prioridad. Síncopa
-        # (stab) y motivo (doble-golpe) vienen ya rate-limitados del improviser.
-        if improv.stab:
-            self._fire_accent(
-                self._accent_pick(),
-                max(int(0.35 * self._frame_rate), int(self.tempo.period)),
-                prio=1, boost=0.1,
-            )
-        if improv.motif:
-            if self._motif_color is None:
-                # por mood: el motivo es PEGAJOSO toda la sección — si cae en un
-                # color fuera de clave lo martilla por minutos (medido: ámbar)
-                self._motif_color = self.deck.choose(list(self.deck.principals))
-            # prioridad máxima: el motivo NO lo pisa un punch/stab
-            self._fire_accent(self._motif_color, int(self.tempo.period), prio=3, boost=0.25)
-
-        # Golpe de color: onset fuerte EN el beat (kick/tambor) trae el tercer
-        # color por un instante y regresa en seco. Cooldown → puñetazo, no rotación.
-        if self._punch_cooldown > 0:
-            self._punch_cooldown -= 1
-        if (
-            self.move == "GROOVE"
-            and strong_onset
-            and onset_intensity >= self._punch_intensity
-            and self._punch_cooldown == 0
-            and self._beat_accent_left == 0  # no arrancar patrón sobre otro
-            and random.random() < self._lead  # solo si el BEAT lidera (comprometido)
-            and self._effect_heat < 1.5       # presupuesto: no si ya hay muchos efectos
-            and not self._fallback            # nada claro → no golpear
-        ):
-            # arranca un PATRÓN rítmico: el color de acento golpea en los próximos
-            # 4 u 8 tiempos (se mantiene en el ritmo), no un golpe suelto que se corta
-            self._effect_heat += 1.0
-            self._beat_accent_color = self._accent_pick()  # la despedida pone el beat
-            self._beat_accent_left = random.choice([4, 8])
-            self._fire_accent(self._beat_accent_color, 0, prio=2, boost=0.2)  # el 1er golpe ya
-            self._beat_accent_left -= 1
-            # más intensidad → cooldown más corto → acentos más densos
-            base = int(self._frame_rate * self.tuning.punch_cooldown_seconds)
-            self._punch_cooldown = self._jit(
-                int(base * (1.0 - 0.6 * self.dyn.intensity * self.tuning.dynamics_strength))
-            )
-        elif (
-            self.move == "GROOVE"
-            and strong_onset
-            and onset_intensity >= self._punch_intensity
-            and self._punch_cooldown == 0
-            and self._lead < 0.5              # la MELODÍA lidera
-            and not self._fallback
-            and self.tuning.rhythm_dark > 0.0
-        ):
-            # RITMO EN EJE OSCURO: cuando la melodía lidera, el beat NO se calla
-            # ni compite en brillo — golpea con un POZO de oscuridad corto. La
-            # melodía maneja el brillo, el ritmo la sombra: ejes separados.
-            self._dark_pulse_until = self._frame + max(
-                int(0.12 * self._frame_rate), int(0.3 * self.tempo.period)
-            )
-            self._punch_cooldown = self._jit(
-                int(self._frame_rate * self.tuning.punch_cooldown_seconds * 0.7)
-            )
-
-        # Accent por riff de guitarra/lead
-        if (
-            self.move == "GROOVE"
-            and lead_onset
-            and lead_intensity >= self._accent_intensity
-            and self._frame >= self._accent_block_until
-        ):
-            self._fire_accent(
-                self._accent_pick(),
-                int(self.tempo.period), prio=1, boost=0.0,
-            )
-            self._effect_heat += 0.7  # el riff consume presupuesto → suprime punches/flash encima
-            cooldown_beats = self._accent_min_measures * self._beats_per_measure
-            self._accent_block_until = self._frame + int(cooldown_beats * self.tempo.period)
+        fire_gestures(self, improv, strong_onset, onset_intensity, lead_onset, lead_intensity)
 
         # el canal detecta el cambio crudo; el director aplica el cooldown (política)
         section_change = self._section_cooldown == 0 and rep_e.section_shift
@@ -888,36 +775,7 @@ class MusicDirector:
         hue, dimming, changed = self._render_move(level, phase)
         stepped = stepped or changed
 
-        # Override único desde el bus de acentos (solo si no hay crossfade:
-        # el fade gana). Un color de golpe a la vez, ya resuelto por prioridad.
-        if (
-            self._fade_left == 0
-            and self._frame < self._accent_hit_until
-            and self._accent_hit_color
-        ):
-            hue = self.grammar.hue(self._accent_hit_color)  # el COLOR cambia entero
-            # ...pero el brillo del golpe se atenúa: gesto de beat (×_lead) × perilla.
-            # Así el golpe se ve como CAMBIO DE COLOR, no como destello de luz.
-            dimming = min(
-                1.0,
-                dimming + self._accent_hit_boost * self._lead * self.tuning.gesture_brightness,
-            )
-            # armar la COLA: al expirar el golpe, regresa DIFUMINADO al color base
-            # (el inverso del fade→snap que ya existía: snap→fade)
-            self._accent_release_hue = hue
-            self._accent_release_left = self._accent_release_total = max(
-                1, int(0.5 * self.tempo.period)
-            )
-        elif self._accent_release_left > 0 and self._fade_left == 0:
-            t = self._accent_release_left / self._accent_release_total
-            hue = _lerp_hue(hue, self._accent_release_hue, t)
-            self._accent_release_left -= 1
-
-        dimming = min(1.0, dimming + improv.bump * self.tuning.gesture_brightness)
-
-        # RITMO EN EJE OSCURO: el pozo de oscuridad del beat (melodía lidera)
-        if self._frame < self._dark_pulse_until:
-            dimming *= 1.0 - 0.55 * self.tuning.rhythm_dark
+        hue, dimming = overlay_gestures(self, hue, dimming, improv)
 
         if self._fade_left > 0:
             t = 1.0 - self._fade_left / self._fade_frames
@@ -941,28 +799,7 @@ class MusicDirector:
             self._effect_heat = max(self._effect_heat, 1.2)
         self._was_dip = in_dip
 
-        # Flash blanco que DECAE al ritmo: se dispara en el golpe y baja lineal
-        # hasta ~0 en el siguiente beat (envelope propio del director).
-        if self._flash_env > 0.0:
-            self._flash_env = max(0.0, self._flash_env - self._flash_step)
-        if (
-            self._flash_enabled
-            and onset
-            and onset_intensity >= self.tuning.flash_intensity
-            and level == "peak"  # solo en los picos reales → el flash es especial, no constante
-            and self._flash_cooldown == 0
-            and not in_dip
-            and self._lead > 0.4          # solo cuando el beat lidera (comprometido)
-            and self._effect_heat < 1.5   # presupuesto de actividad
-            and not self._fallback        # nada claro → no destellar
-        ):
-            self._effect_heat += 1.0
-            self._flash_env = onset_intensity
-            self._flash_step = onset_intensity / max(1.0, self.tuning.flash_beats * self.tempo.period)
-            self._flash_cooldown = self._jit(
-                int(self._frame_rate * self.tuning.flash_cooldown_seconds)
-            )
-        flash = self._flash_env
+        flash = update_flash(self, onset, onset_intensity, level, in_dip)
 
         # Textura de gamma: micro-saltos de brillo (mismo color) — sobre figuras
         # sostenidas Y sobre FLOW (el "juego" en los fades de guitarra que pidió).
@@ -1122,7 +959,7 @@ class MusicDirector:
                 if self._beat_accent_left > 0 and self._beat_accent_color:
                     self._beat_accent_left -= 1
                     if self._beat_accent_left % 2 == 0:
-                        self._fire_accent(self._beat_accent_color, 0, prio=2, boost=0.2)
+                        fire_accent(self, self._beat_accent_color, 0, prio=2, boost=0.2)
                 # RÁFAGA: cuando el ritmo GRITA (groove+intensidad altos y el
                 # beat manda), el color CAMBIA SECO cada beat ciclando la tríada
                 # — cambios de color rítmicos, no una figura suave. Es COLOR al
