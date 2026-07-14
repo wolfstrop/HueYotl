@@ -16,6 +16,7 @@ from audio_analyzer.chroma import RollingChroma
 from rgb_mapper import RGBMapper, ColorDecision
 
 from .director import MusicDirector
+from .observatory import Observatory
 from .improviser import Improviser
 from .modes import AmbientMode
 from .safety import SafetyLimiter
@@ -174,6 +175,9 @@ class Pipeline:
         )
         # Tope de seguridad anti-estroboscópico (independiente del tuning)
         self.safety = SafetyLimiter(frame_rate)
+        # FASE O: observatorio de teoría musical — SOLO mide (tensión armónica,
+        # memoria de secciones, frase). Decidiremos gestos con sus datos.
+        self.observatory = Observatory(frame_rate)
         self.ambient = AmbientMode()
         self._running = False
         self._stopped = False
@@ -287,7 +291,8 @@ class Pipeline:
             f"{tempo.bpm:5.1f}bpm  {decision.level:<6} dim{dimming:3d}  "
             f"L{self._spark(low)} M{self._spark(mid)} H{self._spark(high)}  "
             f"foco{dd.focus:.2f} mel{dd.melody:.2f} ton{self.stft.mid_tonalness:.2f} "
-            f"val{dd.valence:.2f}  {' '.join(ev)}"
+            f"val{dd.valence:.2f} tns{self.observatory.tension:.2f} "
+            f"f{self.observatory.phrase_beat:02d} {self.observatory.last_match}  {' '.join(ev)}"
         )
         sys.stdout.write("\r\033[K" + line)
         sys.stdout.flush()
@@ -321,6 +326,7 @@ class Pipeline:
                 self.mapper.reset()
                 self.safety.reset()
                 self.chroma.reset()
+                self.observatory.reset()
                 logger.info("Audio back — resuming reactive mode")
 
             try:
@@ -340,6 +346,11 @@ class Pipeline:
                     lead_onset=is_lead, lead_intensity=lead_intensity,
                     centroid=self._centroid_ema, valence=valence,
                     tonalness=self.stft.mid_tonalness,
+                )
+                self.observatory.update(
+                    self.director._frame, self.chroma.chroma, self.chroma.tonic,
+                    self.chroma.tonic_frames, energy, self.director.tempo.bpm,
+                    self.director._beat_count, decision.section_change,
                 )
                 self.mapper.luminance_comp = self.tuning.luminance_comp
                 r, g, b, dimming = self.mapper.render(decision)

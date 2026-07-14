@@ -48,6 +48,12 @@ class RollingChroma:
         self._chroma_alpha = 1.0 / (rate * chroma_tau_seconds)
         self._valence_alpha = 1.0 / (rate * valence_tau_seconds)
         self.valence = 0.5
+        # expuestos para el observatorio (Fase O): vector chroma unitario,
+        # tónica estimada y cuántos frames lleva ESTABLE (la tensión armónica
+        # solo vale con tónica firme)
+        self.chroma = np.zeros(12)
+        self.tonic = -1
+        self.tonic_frames = 0
         self._maj = np.array([_unit(np.roll(_MAJOR, k)) for k in range(12)])
         self._min = np.array([_unit(np.roll(_MINOR, k)) for k in range(12)])
         self._counter = 0
@@ -74,6 +80,12 @@ class RollingChroma:
         maj_corr = self._maj.dot(c)
         min_corr = self._min.dot(c)
         tonic = int(np.argmax(np.maximum(maj_corr, min_corr)))  # tónica más probable
+        self.chroma = c
+        if tonic == self.tonic:
+            self.tonic_frames += self._every
+        else:
+            self.tonic = tonic
+            self.tonic_frames = 0
         raw = 0.5 + 0.5 * float(np.tanh((maj_corr[tonic] - min_corr[tonic]) * 3.0))
         self.valence += (raw - self.valence) * self._valence_alpha
         return self.valence
@@ -83,3 +95,6 @@ class RollingChroma:
         self._chroma[:] = 0.0
         self.valence = 0.5
         self._counter = 0
+        self.chroma = np.zeros(12)
+        self.tonic = -1
+        self.tonic_frames = 0
