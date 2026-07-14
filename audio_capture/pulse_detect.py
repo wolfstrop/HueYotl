@@ -4,17 +4,25 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def _capture_target() -> str | None:
+    """Fuente objetivo de la captura: el monitor del sistema, o el MICRÓFONO
+    si HUEYOTL_INPUT=mic (música sonando en la tele/bocinas externas)."""
+    if os.environ.get("HUEYOTL_INPUT") == "mic":
+        return _default_mic_source()
+    return _default_sink_monitor()
+
+
 def find_monitor_source() -> str | None:
-    """Apunta la captura al monitor del sink por defecto (audio del sistema).
+    """Apunta la captura a la fuente objetivo (monitor del sistema, o el
+    micrófono con HUEYOTL_INPUT=mic).
 
     sounddevice solo expone el device genérico "pulse"/"pipewire", que enruta
-    a la *fuente por defecto* — normalmente el micrófono. PULSE_SOURCE fuerza
-    a que ese device se conecte al monitor del sink en su lugar.
+    a la *fuente por defecto* — PULSE_SOURCE fuerza el destino correcto.
     """
-    monitor = _default_sink_monitor()
+    monitor = _capture_target()
     if monitor:
         os.environ["PULSE_SOURCE"] = monitor
-        logger.info(f"Capturing system audio via {monitor}")
+        logger.info(f"Capturing audio via {monitor}")
 
     try:
         import sounddevice as sd
@@ -57,14 +65,33 @@ def _default_sink_monitor() -> str | None:
     return None
 
 
+def _default_mic_source() -> str | None:
+    """La fuente de entrada por defecto (micrófono), NUNCA un .monitor."""
+    try:
+        import pulsectl
+
+        with pulsectl.Pulse("wiz-music-sync") as pulse:
+            src = pulse.server_info().default_source_name
+            if src and not src.endswith(".monitor"):
+                return src
+            # el default era un monitor: buscar la primera fuente real
+            for s in pulse.source_list():
+                if not s.name.endswith(".monitor"):
+                    return s.name
+    except Exception as e:
+        logger.warning(f"Could not resolve default mic source: {e}")
+    return None
+
+
 def ensure_monitor_routing() -> bool:
     """Verifica a qué fuente quedó conectada NUESTRA captura y, si no es el
     monitor del sink por defecto, la mueve a la fuerza.
 
     Necesario porque el plugin ALSA de PipeWire ignora PULSE_SOURCE y
-    stream-restore puede re-enchufarnos al micrófono por historial.
+    stream-restore puede re-enchufarnos a otra fuente por historial.
+    Respeta HUEYOTL_INPUT=mic (ahí el objetivo ES el micrófono).
     """
-    monitor = _default_sink_monitor()
+    monitor = _capture_target()
     if not monitor:
         return False
     try:
