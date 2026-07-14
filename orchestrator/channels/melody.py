@@ -13,6 +13,7 @@ class MelodyReport:
     contour_slow: float  # ~0.8s  — para el BRILLO (forma, no vibra)
     confidence: float    # tonalness — ¿hay melodía real o es batería/ruido?
     activity: float      # cuánto se MUEVE el contorno (0 = nota sostenida/estática)
+    contour_bright: float  # contorno lento con AGC: swing GARANTIZADO para el brillo
 
 
 class MelodyChannel:
@@ -34,6 +35,14 @@ class MelodyChannel:
         self.contour_slow = 0.5
         self.confidence = 0.0
         self.activity = 0.0
+        # AGC del contorno lento: centro y amplitud propios → re-expande
+        # melodías chiquitas (riffs repetidos, piano de pocas notas) a swing
+        # visible. Medido con audio real: el filtro del brillo conservaba solo
+        # el 33% del movimiento a 0.58Hz → "baja de tono pero el brillo es
+        # mínimo y se queda estático".
+        self._c_center = 0.5
+        self._c_amp = 0.05
+        self.contour_bright = 0.5
 
     def update(self, centroid: float, tonalness: float) -> MelodyReport:
         if centroid < self._lo:
@@ -59,9 +68,18 @@ class MelodyChannel:
         # contorno LENTO (~0.8s) para el BRILLO: la forma, no cada nota → no vibra
         self.contour_slow += (self.contour - self.contour_slow) * (1.0 / (self._fr * 0.8))
         self.confidence = tonalness  # ya viene suavizada del analizador
+        # AGC: normaliza el contorno lento por su propia amplitud reciente →
+        # poco movimiento melódico = respiración de brillo visible igual.
+        # Compuerta por confianza: sin melodía real no se amplifica ruido.
+        self._c_center += (self.contour_slow - self._c_center) * (1.0 / (self._fr * 4.0))
+        dev = abs(self.contour_slow - self._c_center)
+        self._c_amp += (dev - self._c_amp) * (1.0 / (self._fr * 2.0))
+        expanded = 0.5 + (self.contour_slow - self._c_center) / (4.5 * max(0.015, self._c_amp))
+        gate = min(1.0, self.confidence / 0.3)
+        self.contour_bright = _clamp01(0.5 + (expanded - 0.5) * gate)
         return MelodyReport(
             self.contour, self.contour_mid, self.contour_slow,
-            self.confidence, self.activity,
+            self.confidence, self.activity, self.contour_bright,
         )
 
     def reset(self) -> None:

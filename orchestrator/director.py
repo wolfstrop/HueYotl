@@ -186,6 +186,7 @@ class MusicDirector:
         self.melody_channel.reset()
         self.melody = 0.5
         self._melody_slow = 0.5  # versión lenta (contorno) para el BRILLO — no vibra
+        self._melody_bright_c = 0.5  # contorno con AGC (swing garantizado)
         self._melody_mid = 0.5   # media (~0.35s) para el COLOR — sigue el contorno, no cada nota
         self.melody_conf = 0.0   # confianza de melodía (tonalness) — para el conductor
         self.melody_act = 0.0    # actividad del contorno (0 = nota sostenida/estática)
@@ -619,6 +620,7 @@ class MusicDirector:
         self.melody = rep.contour
         self._melody_mid = rep.contour_mid
         self._melody_slow = rep.contour_slow
+        self._melody_bright_c = rep.contour_bright  # con AGC: swing garantizado
         self.melody_conf = rep.confidence
         self.melody_act = rep.activity
         self._frame += 1
@@ -1127,9 +1129,10 @@ class MusicDirector:
             else:
                 # ping-pong: regresa al color anterior → JUEGA entre 2, no avanza
                 self.color, self._flow_partner = self._flow_partner, self.color
-        # brillo sigue el CONTORNO LENTO de la melodía (no cada nota → no vibra),
+        # brillo sigue el contorno lento CON AGC (swing garantizado: riffs y
+        # piano de pocas notas también respiran — medido: sin AGC llegaba ±6%),
         # con PLATEAU en los extremos (tanh) para no blanquear en la voz aguda
-        mel_bright = math.tanh((self._melody_slow - 0.5) * 2.2) * 0.5 * self.tuning.melody_bright
+        mel_bright = math.tanh((self._melody_bright_c - 0.5) * 2.2) * 0.5 * self.tuning.melody_bright
         return self._flow_hue, min(0.85, _clamp01(base_dim + 0.12 * glow + mel_bright)), False
 
     def _render_groove(
