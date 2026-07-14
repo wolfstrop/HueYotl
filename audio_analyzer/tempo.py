@@ -36,12 +36,14 @@ class TempoTracker:
             if self.confidence >= 0.5:
                 # Con lock: plegar RELATIVO al periodo vigente. En una balada a
                 # 75bpm la corchea (periodo/2) es un periodo válido del rango
-                # global (150bpm) → ambigüedad métrica que rompía el lock; el
-                # múltiplo ×2^k más cercano al periodo actual la resuelve.
-                ioi = min(
-                    (ioi * m for m in (0.25, 0.5, 1.0, 2.0, 4.0)),
-                    key=lambda c: abs(c - self._period),
-                )
+                # global (150bpm) → ambigüedad métrica que rompía el lock.
+                # Duplicar/dividir hasta la octava del periodo cubre CUALQUIER
+                # subdivisión (el set fijo ×0.25-4 se quedaba corto con
+                # semicorcheas rápidas → regularity moría → ráfaga muerta).
+                while ioi < self._period / 1.5:
+                    ioi *= 2
+                while ioi > self._period * 1.5:
+                    ioi /= 2
                 valid = abs(ioi - self._period) <= 0.45 * self._period
             else:
                 # Sin lock: plegado global (como antes)
