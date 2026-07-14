@@ -26,7 +26,11 @@ class WizProtocol:
         return self._transport
 
     async def send_rgb(self, r: int, g: int, b: int, brightness: int | None = None) -> None:
-        params: dict = {"r": r, "g": g, "b": b}
+        # state:true → si el ON tras un blackout se pierde en el WiFi, el
+        # siguiente frame RGB revive el foco solo (visto en vivo: "On/Off
+        # command lost" dejó el foco muerto a media Hysteria). Durante el
+        # blackout el pipeline manda turn_off cada frame → no pelea.
+        params: dict = {"r": r, "g": g, "b": b, "state": True}
         if brightness is not None:
             # WiZ setPilot espera dimming 10-100 (pywizlight hacía este mapeo)
             params["dimming"] = max(10, min(100, round(brightness / 255 * 100)))
