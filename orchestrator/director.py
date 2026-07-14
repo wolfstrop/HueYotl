@@ -263,6 +263,7 @@ class MusicDirector:
         self._fatigue_frames = 0
         self._fatigue_color = self.color
         self._last_promote_frame = 0  # rotación de fondo del pool de colores
+        self._last_veda_frame = 0     # veda de colores (descanso forzado)
 
         # Métele/cálmate (cambio brusco de intensidad)
         self._surge_cooldown = 0
@@ -557,6 +558,8 @@ class MusicDirector:
         (motif > punch > stab/guitarra) — así el motivo no se rompe."""
         if color is None:
             return
+        if color in self.deck.banned:  # la veda también aplica a los golpes
+            color = self._triad_color if self._triad_color not in self.deck.banned else self._partner
         if self._frame < self._accent_hit_until and prio < self._accent_hit_prio:
             return
         # PISO de código: todo acento dura lo suficiente para VERSE (~0.2s / 0.4
@@ -686,6 +689,35 @@ class MusicDirector:
         # MOMENTUM: si hay una construcción melódica buena en curso (la melodía
         # lidera Y se mueve), el sistema NO la interrumpe — pospone la rotación
         # (con tope 2× para no re-atascar). "Se cambia, no por la música" ← esto.
+        # VEDA de colores: cada veda_seconds se vetan 1-2 colores por
+        # veda_duration — el MÁS USADO descansa (el ojo lo agradece) y a veces
+        # cae uno al azar (sorpresa). Nunca el color en pantalla. Fuerza
+        # exploración más allá del heat (idea del usuario).
+        if self.tuning.veda_seconds > 0 and (
+            self._frame - self._last_veda_frame
+            > self._frame_rate * self.tuning.veda_seconds
+        ):
+            self._last_veda_frame = self._frame
+            candidates = [c for c in self.deck.heat if c != self.color]
+            victims = [max(candidates, key=lambda c: self.deck.heat[c])]
+            if random.random() < 0.5:
+                rest = [c for c in candidates if c != victims[0]]
+                if rest:
+                    victims.append(random.choice(rest))
+            self.deck.ban(
+                victims, int(self._frame_rate * self.tuning.veda_duration)
+            )
+            # divorcio inmediato: socio/tríada ya elegidos no respetan la veda
+            # (la figura los rendería hasta 4s más — medido: 24% de fuga)
+            if self._partner in self.deck.banned:
+                self._partner = self._pick_partner()
+            if self._triad_color in self.deck.banned:
+                self._triad_color = self._pick_partner()
+            if self._beat_accent_color in self.deck.banned:
+                self._beat_accent_color = self._triad_color
+            if self._motif_color in self.deck.banned:
+                self._motif_color = None  # el próximo motivo se elige de nuevo
+
         building = (
             self._lead < 0.35 and self.melody_act > 0.35 and self.melody_conf > 0.35
         )

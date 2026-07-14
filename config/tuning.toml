@@ -33,6 +33,8 @@ swell_strength = 0.7             # cuánto CRECE el brillo cuando el cantante so
 rhythm_dark = 0.6                # el beat golpea con PULSOS DE OSCURIDAD cuando la melodía lidera (0 = off; ↑ = pozos más profundos)
 burst_drive = 0.7                # ráfaga color-por-beat cuando el ritmo grita (↓ = entra más fácil; 1.0 = nunca)
 luminance_comp = 0.5             # iguala el brillo PERCIBIDO entre colores (quita el "putazo" al cambiar de hue); 0 = off
+veda_seconds = 45                # cada cuánto se VETAN 1-2 colores (el sobreusado descansa + a veces uno sorpresa); 0 = off
+veda_duration = 20               # cuánto dura la veda
 gamma_texture = 0.35             # ↑ = más shimmer de brillo en colores sostenidos
 melody_bright = 0.8              # cuánto sigue el brillo el contorno de la melodía (0 = nada)
 

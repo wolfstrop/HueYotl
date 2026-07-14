@@ -21,18 +21,33 @@ class ColorDeck:
         # Anti-repetición: 'calor' por color — sube cuando se muestra, decae con
         # el tiempo. Penaliza los colores usados recién → rotan, no dominan.
         self.heat: dict[str, float] = {c: 0.0 for c in grammar.all_colors()}
+        # VEDA: colores temporalmente vetados (idea del usuario: bloquear 1-2
+        # cada cierto tiempo fuerza exploración — el sobreusado descansa y a
+        # veces cae uno al azar como sorpresa). Color → frames restantes.
+        self.banned: dict[str, int] = {}
         self.reseed(seed_color)
 
     def tick(self, current: str) -> None:
         """El director lo llama cada frame con el color mostrado: sube su calor,
-        enfría los demás (media vida ~4s)."""
+        enfría los demás (media vida ~4s). También descuenta las vedas."""
         for c in self.heat:
             self.heat[c] *= 0.99975
         if current in self.heat:
             self.heat[current] += 0.004
+        if self.banned:
+            for c in list(self.banned):
+                self.banned[c] -= 1
+                if self.banned[c] <= 0:
+                    del self.banned[c]
+
+    def ban(self, colors: list[str], frames: int) -> None:
+        """Veta `colors` por `frames` (reemplaza la veda anterior)."""
+        self.banned = {c: frames for c in colors}
 
     def _w(self, color: str) -> float:
-        """Peso del mood × penalización por repetición (calor)."""
+        """Peso del mood × penalización por repetición (calor). Vetado ≈ fuera."""
+        if color in self.banned:
+            return 0.001
         mood = 1.0 if self.mood_weights is None else max(0.01, self.mood_weights.get(color, 1.0))
         # 0.35: con 0.18 el color más pesado del mood monopolizaba la base
         # (purple 34% del tiempo en frío-oscuro) — la repetición debe doler más
