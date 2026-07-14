@@ -1244,7 +1244,17 @@ class MusicDirector:
             self._frame - self._figure_start_frame
             > self._frame_rate * self.tuning.figure_max_seconds
         )
-        if self._figure is None or beats_done >= self._figure.total_beats or too_long:
+        # PRECEDENCIA #1 (del censo, SOAD): si la RÁFAGA está activa, EMBER es
+        # la figura equivocada — íntima y oscura bajo un ritmo que grita. Cede.
+        incoherent = self._burst_color is not None and (
+            self._figure is not None and self._figure.name == "EMBER"
+        )
+        if (
+            self._figure is None
+            or beats_done >= self._figure.total_beats
+            or too_long
+            or incoherent
+        ):
             changed = self._next_figure()
             beats_done = 0
 
@@ -1335,9 +1345,15 @@ class MusicDirector:
         # el tope del SafetyLimiter anti-estrobo).
         gate_ok = self.tempo.confidence >= 0.6 and self.tempo.precision >= 0.6
         gate_cycle = 1 if self.tempo.period >= self._frame_rate * 0.66 else 2
+        # con el ritmo GRITANDO (condiciones de ráfaga), EMBER ni se considera
+        # — regla general del censo: figura íntima + ritmo a tope no combinan
+        rhythm_screams = (
+            self.dyn.groove > self.tuning.burst_drive and self._lead > 0.65
+        )
         self._figure = pick_figure(
             self._eff_level(), current, measures, self._beats_per_measure,
-            self._shadow_kwargs, ember_weight=self.tuning.ember_weight,
+            self._shadow_kwargs,
+            ember_weight=0.0 if rhythm_screams else self.tuning.ember_weight,
             gate_cycle=gate_cycle if gate_ok else None,
         )
         # EMBER = oscuro puro: el color base se ancla a un MONO (rojo/azul/
