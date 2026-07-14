@@ -2,7 +2,7 @@
 
 > *La esencia del hue. El dios viejo de la música y la danza, viviendo en un foco.*
 
-por **GUAZUX**
+por **WOLFSTROP**
 
 **Hue** (el tono de color que este director emite frame a frame) + **-yotl**
 (sufijo náhuatl de esencia, como en *mexicayotl*) + un guiño a
