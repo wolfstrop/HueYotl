@@ -32,6 +32,7 @@ class Conductor:
         self.lead = 0.5
         self._lead_target = 0.5
         self._mel_slow = 0.0  # promedio lento de la confianza de melodía (des-atasco)
+        self._jolt_cooldown = 0  # el empujón no se re-dispara en cadena
 
     def update(
         self,
@@ -51,8 +52,19 @@ class Conductor:
         # DES-ATASCO: si la melodía se DESPLOMA (fin/cambio de frase) no esperes el
         # ~1s de suavizado — empuja el foco al beat de inmediato, así el cambio de
         # color cae en ritmo en vez de quedarse "buscando melodía".
-        if melody_conf < self._mel_slow - 0.15 and self.lead < 0.5:
+        # Con DOS frenos (bitácora: 5/5 anomalías eran este empujón en LOOP en
+        # pasajes quietos): cooldown ~2.5s, y solo si la melodía DE VERDAD
+        # estaba presente antes (caer de ruido a ruido no es fin de frase).
+        if self._jolt_cooldown > 0:
+            self._jolt_cooldown -= 1
+        if (
+            melody_conf < self._mel_slow - 0.15
+            and self.lead < 0.5
+            and self._mel_slow > 0.45
+            and self._jolt_cooldown == 0
+        ):
             self.focus = min(1.0, self.focus + 0.25)
+            self._jolt_cooldown = int(self._fr * 2.5)
         self._mel_slow += (melody_conf - self._mel_slow) * (1.0 / (self._fr * 0.5))
         # histéresis: se compromete con beat (>0.62) o melodía (<0.38) y se PEGA
         # hasta cruzar decididamente el otro lado → no oscila en 0.5
@@ -74,3 +86,4 @@ class Conductor:
         self.lead = 0.5
         self._lead_target = 0.5
         self._mel_slow = 0.0
+        self._jolt_cooldown = 0
