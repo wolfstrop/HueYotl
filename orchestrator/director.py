@@ -14,6 +14,7 @@ from .dynamics import MODE_BIAS, Dynamics
 from .figures import FigureContext, pick_figure
 from .gestures import accent_pick, fire_accent, fire_gestures, overlay_gestures, update_flash
 from .improviser import Improviser
+from .moves import render_move
 
 
 def _lerp_hue(a: float, b: float, t: float) -> float:
@@ -772,7 +773,7 @@ class MusicDirector:
             self._fatigue_frames = 0
             stepped = True
 
-        hue, dimming, changed = self._render_move(level, phase)
+        hue, dimming, changed = render_move(self, level, phase)
         stepped = stepped or changed
 
         hue, dimming = overlay_gestures(self, hue, dimming, improv)
@@ -835,189 +836,7 @@ class MusicDirector:
 
     # -------------------------------------------------------- render moves
 
-    def _render_move(self, level: str, phase: float) -> tuple[float, float, bool]:
-        # BRILLO ← DINÁMICA MUSICAL: la intensidad (0.4s) hace el cuerpo y el
-        # crescendo (trend subiendo) el SWELL — el brillo respira con la FRASE.
-        # En lo bajo se hunde (recupera el juego oscuro); no es destello por golpe.
-        cresc = _clamp01(self.dyn.trend / max(0.05, self.tuning.surge_threshold))
-        swell = _clamp01(self.dyn.intensity * 0.75 + cresc * 0.25)
-        # curva: hunde los medios (juego oscuro) y reserva el brillo para picos/crescendo
-        dyn_dim = 0.06 + (self.tuning.brightness_ceiling - 0.06) * swell ** 1.4
-        w = self.tuning.brightness_dynamics
-        base_dim = self._energy_envelope * (1.0 - w) + dyn_dim * w
-        # SWELL de nota sostenida: build encima de la envolvente — crece con la
-        # nota (a todo pulmón) y se suelta al soltarla. Gesto de LD, no acento.
-        base_dim = _clamp01(
-            base_dim + self._swell * 0.45 * self.tuning.swell_strength
-        )
-        # "MÁS COLOR, NO MÁS BRILLO": en el oscuro puro (EMBER) la intensidad NO
-        # empuja el brillo hacia arriba (eso mataba el juego oscuro: "va al rojo
-        # y quiere más brillo") — se expresa como VELOCIDAD de cambio de color.
-        if self.move == "GROOVE" and self.state == "EMBER":
-            base_dim = min(base_dim, self.tuning.brightness_ceiling * 0.55)
-        glow = _clamp01(self.glow) * self._glow_gain
 
-        if self.move == "GROOVE":
-            return self._render_groove(level, phase, base_dim, glow)
-
-        if self.move == "MONO":
-            self.state = "-"
-            self._wobble_phase += self._wobble_speed
-            hue = (self.grammar.hue(self.color) + 0.02 * math.sin(self._wobble_phase)) % 1.0
-            return hue, min(1.0, base_dim + 0.15 * glow), False
-
-        # RIFF (reloj melódico v1): cuando la melodía ES el ritmo — notas
-        # rápidas (tararara-tururú) con la melodía al mando — el color CAMBIA
-        # POR NOTA entre el color y el socio, seco. La deriva no puede seguir
-        # eso; el reloj de notas sí. Escaso a propósito: pide tasa sostenida.
-        mc = self.melody_channel
-        if mc.note_rate >= 2.0 and mc.confidence > 0.35 and self._lead < 0.5:
-            self.state = "RIFF"
-            if mc.note_tick:
-                self._riff_side = 1 - self._riff_side
-            hue = self.grammar.hue(
-                self.color if self._riff_side == 0 else self._flow_partner
-            )
-            mel_b = math.tanh((self._melody_bright_c - 0.5) * 2.2) * 0.5 * self.tuning.melody_bright
-            return hue, min(0.85, _clamp01(base_dim + 0.12 * glow + mel_b)), False
-
-        # FLOW: deriva orgánica con INERCIA (Fase 3 recuperada) por caminos de
-        # la gramática — solo entre fade-partners, así nunca choca. El pitch
-        # acelera (agudo) o frena (grave); el onset da una patada al movimiento;
-        # al llegar al socio, se elige un nuevo socio fundible (camina el grafo).
-        self.state = "-"
-        target = self.grammar.hue(self._flow_partner)
-        diff = ((target - self._flow_hue + 0.5) % 1.0) - 0.5
-        # velocidad-crucero hacia el socio; melodía aguda acelera (1.5x), grave frena (0.5x)
-        pitch_accel = 0.5 + _clamp01(self._melody_mid)
-        desired = math.copysign(self._flow_speed * pitch_accel, diff or 1.0)
-        self._flow_vel += (desired - self._flow_vel) * self._flow_ease  # inercia
-        if self._last_onset_frame == self._frame:  # el onset da una patada
-            self._flow_vel += math.copysign(self._flow_kick, diff or 1.0)
-        cap = 6 * self._flow_speed
-        self._flow_vel = max(-cap, min(cap, self._flow_vel))
-        self._flow_hue = (self._flow_hue + self._flow_vel) % 1.0
-        if abs(diff) < 0.01:
-            self._flow_arrivals += 1
-            if self._flow_arrivals % 3 == 0:
-                # cada 3 llegadas: SALTA a un color nuevo del deck (mueve paleta)
-                self.color = self._flow_partner
-                partners = [
-                    p
-                    for p in self.grammar.fade_partners(self._flow_partner)
-                    if p in self.deck.principals or p == self.deck.incoming
-                ] or self.grammar.fade_partners(self._flow_partner)
-                if partners:
-                    # ponderado por mood: la deriva no se fuga de la clave
-                    self._flow_partner = self.deck.choose(partners)
-            else:
-                # ping-pong: regresa al color anterior → JUEGA entre 2, no avanza
-                self.color, self._flow_partner = self._flow_partner, self.color
-        # brillo sigue el contorno lento CON AGC (swing garantizado: riffs y
-        # piano de pocas notas también respiran — medido: sin AGC llegaba ±6%),
-        # con PLATEAU en los extremos (tanh) para no blanquear en la voz aguda
-        mel_bright = math.tanh((self._melody_bright_c - 0.5) * 2.2) * 0.5 * self.tuning.melody_bright
-        return self._flow_hue, min(0.85, _clamp01(base_dim + 0.12 * glow + mel_bright)), False
-
-    def _render_groove(
-        self, level: str, phase: float, base_dim: float, glow: float
-    ) -> tuple[float, float, bool]:
-        ahead = self._frame + self._lookahead
-        beat_idx = self.tempo.beat_index(ahead)
-        changed = False
-
-        if self._last_beat_idx == -1:
-            self._last_beat_idx = beat_idx
-            self._last_beat_frame = self._frame
-        else:
-            crossed = (
-                beat_idx != self._last_beat_idx
-                and self._frame - self._last_beat_frame >= 0.5 * self.tempo.period
-            )
-            # Respaldo por TIEMPO: si el PLL se atora (onsets ambiguos en un
-            # pasaje sostenido), tickea igual cada periodo → la figura NUNCA se
-            # congela esperando un beat que no llega.
-            timeout = self._frame - self._last_beat_frame >= self.tempo.period
-            if crossed or timeout:
-                # actualizar el índice SOLO al tickear: si el guard de 0.5·periodo
-                # suprime un cruce, el tick se DIFIERE (antes se perdía → la
-                # paridad de GATE y los patrones 4/8 se corrompía y "se desfasaba")
-                self._last_beat_idx = beat_idx
-                self._last_beat_frame = self._frame
-                self._beat_count += 1
-                # TRANSICIÓN cuantizada: el color de transición cae EN el beat
-                # (no a destiempo), con fundido corto → cambio limpio en ritmo.
-                if self._pending_color is not None:
-                    self.color = self._pending_color
-                    self._pending_color = None
-                    self._partner = self._pick_partner()
-                    self._start_fade()
-                if self._figure is not None:
-                    self._figure.on_beat(self._beat_count - self._figure_start_beat)
-                # patrón rítmico: el acento golpea cada 2° tiempo (destellos
-                # espaciados, no un relleno) durante la ventana de 4/8 tiempos
-                if self._beat_accent_left > 0 and self._beat_accent_color:
-                    self._beat_accent_left -= 1
-                    if self._beat_accent_left % 2 == 0:
-                        fire_accent(self, self._beat_accent_color, 0, prio=2, boost=0.2)
-                # RÁFAGA: cuando el ritmo GRITA (groove+intensidad altos y el
-                # beat manda), el color CAMBIA SECO cada beat ciclando la tríada
-                # — cambios de color rítmicos, no una figura suave. Es COLOR al
-                # ritmo, no brillo (los ejes no compiten).
-                if (
-                    self.tuning.burst_drive < 1.0
-                    and self.dyn.groove > self.tuning.burst_drive
-                    and self.dyn.intensity > 0.45
-                    and self._lead > 0.65
-                    and not self._fallback
-                ):
-                    self._burst_idx += 1
-                    cycle = (self.color, self._partner, self._triad_color)
-                    self._burst_color = cycle[self._burst_idx % 3]
-                else:
-                    self._burst_color = None
-
-        beats_done = self._beat_count - self._figure_start_beat
-        # tope por TIEMPO además de por beats: en tempo lento/ambiguo una figura
-        # no debe estirarse a >figure_max_seconds sosteniendo un color (congelamiento)
-        too_long = (
-            self._frame - self._figure_start_frame
-            > self._frame_rate * self.tuning.figure_max_seconds
-        )
-        # PRECEDENCIA #1 (del censo, SOAD): si la RÁFAGA está activa, EMBER es
-        # la figura equivocada — íntima y oscura bajo un ritmo que grita. Cede.
-        incoherent = self._burst_color is not None and (
-            self._figure is not None and self._figure.name == "EMBER"
-        )
-        if (
-            self._figure is None
-            or beats_done >= self._figure.total_beats
-            or too_long
-            or incoherent
-        ):
-            changed = self._next_figure()
-            beats_done = 0
-
-        self.state = self._figure.name
-        ctx = FigureContext(
-            phase=phase,
-            beats_done=beats_done,
-            beats_per_measure=self._beats_per_measure,
-            hue_a=self.grammar.hue(self.color),
-            hue_b=self.grammar.hue(self._partner),
-            base_dim=base_dim,
-            glow=glow,
-            pitch=self._melody_mid,
-            pitch_gain=self._pitch_gain * (1.0 - self._lead),  # melodía calla si el beat lidera
-            aggression=self.dyn.intensity * self.tuning.dynamics_strength,
-            shadow_hue_blend=self._shadow_blend,
-            shadow_hue=SHADOW_HUE,
-            shadow_dim=self._shadow_dim,
-        )
-        hue, dim = self._figure.render(ctx)
-        if self._burst_color is not None:
-            hue = self.grammar.hue(self._burst_color)  # ráfaga: color seco por beat
-        return hue, dim, changed
 
     def _next_figure(self) -> bool:
         """Figura nueva: colores del deck, duración 2-4 compases. En finales
