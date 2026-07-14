@@ -273,7 +273,13 @@ class Pipeline:
             ev.append("~tex")
         if dd.improviser.bump > 0.05:
             ev.append("bump")
-        partner = getattr(dd, "_partner", "")
+        # en FLOW el socio real es _flow_partner (el de GROOVE queda rancio y
+        # pintaba "orange→orange" fantasma en el debug)
+        partner = (
+            getattr(dd, "_flow_partner", "")
+            if dd.move == "FLOW"
+            else getattr(dd, "_partner", "")
+        )
         mode = f" [{dd.dyn.mode}]" if dd.dyn.mode != "auto" else ""
         line = (
             f"♪ {dd.move:<6}·{dd.state:<7} {dd.color:>7}→{partner:<7} "
