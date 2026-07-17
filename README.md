@@ -91,11 +91,44 @@ python3 -m venv .venv
 
 .venv/bin/python -m orchestrator.main            # reactivo (default)
 .venv/bin/python -m orchestrator.main --debug    # + línea de estado en vivo
-.venv/bin/python -m orchestrator.main --mode ambient
+.venv/bin/python cli.py                          # TUI (lanzar modos, on/off, nivel)
 ```
 
 Requisitos: Python 3.11+, PulseAudio/PipeWire (captura del monitor del
 sistema), foco WiZ en la misma red.
+
+## Modos
+
+| Modo | Qué hace |
+|---|---|
+| ♪ **Reactivo** | el show completo (audio del sistema; `HUEYOTL_INPUT=mic` para micrófono) |
+| 🐈 **Gato** (`modo_gato.py`) | penumbra nocturna sin música: marea+vela, rojo profundo de base (los gatos casi no ven el rojo), deriva lenta con sabor |
+| ☀ **Ambiente** | luz circadiana PARA VER (neutro de día, vela de noche) + lavado de color continuo y brisas |
+| 🔔 **Notificaciones** (`notificar.py`) | avisos por el foco: `info`, `pendiente`, `alerta`, `despertador` (amanecer 5 min), presets custom |
+
+**Nivel global**: una perilla de iluminación (10-160%) que TODOS los modos
+respetan en vivo — `j`/`k` en el TUI o `nivel_global()` por MCP.
+
+## MCP — el foco como herramienta de agentes
+
+`mcp_server.py` (FastMCP, stdio) expone 13 tools: `apagar_todo`,
+`poner_color`, `lanzar_modo`, `nivel_global`, `notificar` /
+`definir_notificacion` (los agentes crean sus propios avisos, validados —
+imposible crear un strobe), y `ajustar_knob` — las 26 perillas de
+`tuning.toml` calibrables EN VIVO por un agente mientras suena la música.
+Prioridad: el MCP manda — desaloja al modo que corra (SIGINT limpio).
+Remoto sin abrir puertos: `ssh servidor "python mcp_server.py"` como
+comando stdio del cliente MCP.
+
+## Modo distribuido (snapcast)
+
+HueYotl puede correr en un servidor de la LAN (mejor latencia al foco) con
+[snapcast](https://github.com/snapcast/snapcast) como bus de audio:
+**librespot** (Spotify Connect) y **shairport-sync** (AirPlay) como fuentes
+del snapserver → un snapclient local toca en un sink virtual
+(`hueyotl_bus`) → el reactivo captura su monitor. El celular manda play
+por Connect, un iPhone 4 de 2010 manda AirPlay, la luz baila en el cuarto y
+el audio suena sincronizado en cualquier snapclient (PC, Android, sala).
 
 ## Calibración EN VIVO
 
@@ -130,10 +163,12 @@ audio_capture → audio_analyzer ─┬→ channels (melodía/beat/armonía/ener
 ## Estado
 
 Funcional y en calibración activa contra oídos/ojos reales (rock, salsa,
-banda, electrónica). Sin suite de tests formal — la verificación es
-simulación sintética por pieza + prueba de oído. Pendientes conocidos:
-seguimiento de guitarra a destiempo, saltos secos de tempo (metal/prog),
-MCP + CLI para control externo, multi-foco por roles.
+banda, electrónica; la meta fundacional — aguantar a MUSE — se cumplió).
+Sin suite de tests formal — la verificación es simulación sintética por
+pieza + prueba de oído. Pendientes conocidos: seguimiento de guitarra a
+destiempo, saltos secos de tempo (metal/prog), lookahead leyendo el buffer
+del snapserver (luz anticipada al beat), gestos desde el Observatorio
+(tensión armónica/secciones/frase), multi-foco por roles.
 
 ## Licencia
 

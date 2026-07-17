@@ -1,0 +1,50 @@
+{
+  "info": {
+    "patron": "respiracion",
+    "colores": [
+      "teal"
+    ],
+    "ciclos": 3,
+    "brillo": 55,
+    "prioridad": "suave"
+  },
+  "pendiente": {
+    "patron": "alternancia",
+    "colores": [
+      "azul",
+      "naranja"
+    ],
+    "velocidad": "lenta",
+    "brillo": 35,
+    "prioridad": "toma"
+  },
+  "alerta": {
+    "patron": "latido",
+    "colores": [
+      "rojo"
+    ],
+    "velocidad": "rapida",
+    "brillo": 85,
+    "prioridad": "toma"
+  },
+  "despertador": {
+    "patron": "amanecer",
+    "colores": [
+      "naranja",
+      "ambar"
+    ],
+    "duracion": 300,
+    "brillo": 90,
+    "prioridad": "toma"
+  },
+  "cleo_comida": {
+    "patron": "latido",
+    "colores": [
+      "verde",
+      "ambar"
+    ],
+    "ciclos": 6,
+    "brillo": 60,
+    "prioridad": "suave"
+  }
+}

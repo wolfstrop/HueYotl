@@ -18,12 +18,14 @@ from textual.binding import Binding
 from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
 
 from config import Settings
+from config.nivel import escribir_nivel
 from wiz_controller.protocol import WizProtocol
 
 MODES = [
     ("♪ Reactivo — audio del sistema", ["-m", "orchestrator.main"], {}),
     ("🎤 Reactivo — MICRÓFONO (tele/bocinas)", ["-m", "orchestrator.main"], {"HUEYOTL_INPUT": "mic"}),
-    ("🌙 Ambiente — colores suaves sin música", ["-m", "orchestrator.main", "--mode", "ambient"], {}),
+    ("☀ Ambiente — luz para ver, según la hora del día", ["-m", "orchestrator.main", "--mode", "ambient"], {}),
+    ("🐈 Modo gato — penumbra tranquila, deriva lenta", ["modo_gato.py"], {}),
     ("■ Detener modo", None, {}),
 ]
 
@@ -51,6 +53,7 @@ class HueYotlTUI(App):
         self.proc: subprocess.Popen | None = None
         self.mode_name = ""
         self._dim = 60  # 0-255, se sincroniza con el estado real al refrescar
+        self._nivel = 1.0  # nivel GLOBAL de iluminación (j/k con modo corriendo)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -106,7 +109,14 @@ class HueYotlTUI(App):
         await self.refresh_status()
 
     async def _set_dim(self, delta: int) -> None:
-        if self._blocked():
+        # con un modo corriendo, j/k ajustan el NIVEL GLOBAL vía archivo
+        # (todos los modos lo releen en <2s) — sin pelear por el UDP
+        if self.proc is not None and self.proc.poll() is None:
+            try:
+                self._nivel = escribir_nivel(self._nivel + (0.15 if delta > 0 else -0.15))
+                self.notify(f"nivel global: {self._nivel:.0%}")
+            except OSError as e:
+                self.notify(f"no pude escribir el nivel: {e}", severity="error")
             return
         self._dim = max(10, min(255, self._dim + delta))
         try:

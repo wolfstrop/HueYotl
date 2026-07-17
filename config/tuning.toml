@@ -16,7 +16,7 @@ mood_strength = 1.0             # 0 = colores como antes; 1 = el mood/tonalidad 
 melody_lead_bias = 0.8          # cuánto la confianza (tonalness vs tempo lock) decide quién lidera; 0 = solo groove (viejo), sube para que la melodía clara mande
 gesture_brightness = 0.35        # cuánto los golpes suben el BRILLO; ↓ = cambian color sin destellar (0 = puro cambio de color, sin destello)
 valence_strength = 0.4          # cuánto empuja el modo mayor/menor (alegre→cálido, triste→frío); crudo, súbelo si acierta
-keep_color_prob = 0.6            # ↑ repite más el mismo color (menos alocado)
+keep_color_prob = 0.6 # ↑ repite más el mismo color (menos alocado)
 fatigue_seconds = 5.0           # color pegado más de esto → salto al complemento
 palette_rotate_seconds = 12.0   # cada cuánto entra un color NUEVO al pool (aunque no cambie la sección)
 figure_max_seconds = 4.0         # una figura no dura más de esto (anti-congelamiento)
@@ -25,7 +25,7 @@ cut_prob = 0.45                  # prob de corte seco OFF→ON en momentos stacc
 punch_cooldown_seconds = 0.5     # ↓ = golpes de color (tercer color) más seguidos
 
 [oscuros]
-ember_weight = 3               # ↑ = más momentos de color puro oscuro (el "oro")
+ember_weight = 3 # ↑ = más momentos de color puro oscuro (el "oro")
 brightness_ceiling = 0.42        # ↓ = todo más oscuro y los cambios se notan más
 brightness_dynamics = 0.6        # cuánto el brillo respira con la DINÁMICA (intensidad+crescendo); 0 = plano, 1 = swell fuerte
 transition_sensitivity = 0.5     # qué tan fácil detecta cambio de frase/crescendo para mover color AL BEAT (↑ = más sensible)

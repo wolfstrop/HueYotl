@@ -67,6 +67,8 @@ class WizProtocol:
 
     async def get_state(self) -> dict:
         state = await asyncio.wait_for(self._bulb.updateState(), timeout=self._timeout)
+        if isinstance(state, (list, tuple)):  # pywizlight nuevo: [PilotParser]
+            state = state[0]
         return {
             "on": state.get_state(),
             "brightness": state.get_brightness(),

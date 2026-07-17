@@ -7,6 +7,7 @@ import time
 import os
 
 from config import Settings
+from config.nivel import leer_nivel
 from config.tuning import Tuning, TuningWatcher
 from wiz_controller import WizController
 from audio_capture import AudioCapture
@@ -356,6 +357,8 @@ class Pipeline:
                 )
                 self.mapper.luminance_comp = self.tuning.luminance_comp
                 r, g, b, dimming = self.mapper.render(decision)
+                # nivel GLOBAL (TUI j/k o MCP): escala el show entero en vivo
+                dimming = max(10, min(255, round(dimming * leer_nivel())))
                 # Capa de seguridad: limita flashes/estroboscopía (no se puede apagar)
                 r, g, b, dimming = self.safety.filter(r, g, b, dimming)
                 if decision.blackout:
@@ -416,8 +419,8 @@ class Pipeline:
         logger.info("Ambient mode running")
         while self._running:
             r, g, b = self.ambient.process()
-            self.wiz.send_rgb(r, g, b)
-            await asyncio.sleep(0.05)
+            self.wiz.send_rgb(r, g, b, brightness=self.ambient.brightness)
+            await asyncio.sleep(0.25)  # circadiano: nada cambia rápido aquí
 
     def set_mode(self, mode: str) -> None:
         self._mode = mode
